@@ -43,6 +43,10 @@ const displayItems = computed(() =>
 const projectsOptions = ref<AsanaProject[]>([]);
 const projectsOptionsLoading = ref(false);
 
+/** 首次進入頁面時只載入前 N 個專案以降低 loading */
+const INITIAL_LOAD_LIMIT = 5;
+const isFirstLoad = ref(true);
+
 const selectedProjectGids = ref<string[]>([]);
 const LS_KEY_PREFIX = "asana_progress_selected_project_gids_v1";
 const projectPickerOpen = ref(false);
@@ -168,12 +172,18 @@ async function loadProgress() {
       );
     }
 
-    const projectsToLoad =
+    let projectsToLoad =
       selectedProjectGids.value.length > 0
         ? projectsOptions.value.filter((p) =>
             selectedProjectGids.value.includes(p.gid)
           )
         : projectsOptions.value;
+
+    // 首次進入只載入前 N 個專案，降低初始 loading
+    if (isFirstLoad.value) {
+      projectsToLoad = projectsToLoad.slice(0, INITIAL_LOAD_LIMIT);
+      isFirstLoad.value = false;
+    }
 
     // 第一步：併發取得所有專案的 sections，再把專案與 section 框一次性全部渲染
     const projectSectionList = await Promise.all(
