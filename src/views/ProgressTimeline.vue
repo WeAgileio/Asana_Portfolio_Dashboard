@@ -148,43 +148,41 @@ async function loadProgress() {
           )
         : projectsOptions.value;
 
-    for (const project of projectsToLoad) {
-      const sections = await fetchSectionsByProject(project.gid);
+    // 第一步：併發取得所有專案的 sections，再把專案與 section 框一次性全部渲染
+    const projectSectionList = await Promise.all(
+      projectsToLoad.map(async (project) => {
+        const sections = await fetchSectionsByProject(project.gid);
+        return { project, sections };
+      })
+    );
 
-      // 第一步：先用空任務建立 section 結構，讓專案與 section 先顯示出來
+    for (const { project, sections } of projectSectionList) {
       const placeholderSections: SectionProgress[] = sections.map((section) =>
         calcSectionProgress(section, [])
       );
-
-      const projectItem: ProjectProgress = {
+      items.value.push({
         project,
         sections: placeholderSections,
         loadingTasks: true,
-      };
-      const index = items.value.length;
-      items.value.push(projectItem);
+      });
+    }
 
-      // 第二步：背景併發抓取各 section 的任務與實際進度，完成後再更新對應的 projectItem
+    // 第二步：併發載入各專案的任務，各自完成時更新對應的 item（不再一個專案全載完才處理下一個）
+    projectSectionList.forEach(({ project, sections }, index) => {
       (async () => {
         try {
           const sectionProgressListRaw = await Promise.all(
             sections.map(async (section) => {
               const tasks = await fetchTasksBySection(section.gid);
-
-              // 規則：若此區段「沒有任何任務」且名稱為「未命名區段」，則不顯示
               if (section.name === "未命名區段" && tasks.length === 0) {
                 return null as SectionProgress | null;
               }
-
               return calcSectionProgress(section, tasks);
             })
           );
-
           const sectionProgressList = sectionProgressListRaw.filter(
             (x): x is SectionProgress => x !== null
           );
-
-          // 直接覆蓋掉該 index 的專案資料，確保 Vue 追蹤到變更
           items.value[index] = {
             project,
             sections: sectionProgressList,
@@ -194,7 +192,7 @@ async function loadProgress() {
           console.error("載入專案 section 任務失敗", e);
         }
       })();
-    }
+    });
 
     if (projectsToLoad.length === 0) {
       error.value = "目前選擇的專案沒有可載入的資料（可能已被封存或權限不足）。";
