@@ -32,6 +32,8 @@ export interface AsanaTask {
   updaterName?: string | null;
   /** 任務創建人名稱（來自 API created_by） */
   creatorName?: string | null;
+  /** 請款金額（來自指定 custom field 的數值） */
+  billingAmount?: number | null;
   permalink_url: string;
 }
 

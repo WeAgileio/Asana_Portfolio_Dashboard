@@ -1,25 +1,175 @@
 ---
-description: Enforce Conventional Commits for commit messages and change summaries
+description: 相關規定
 globs:
   - "**/*"
 alwaysApply: true
 ---
 
-You are helping generate git commit messages, PR titles, and change summaries for this repository.
-
-Follow the Conventional Commits 1.0.0 style strictly.
 
 ## Git 提交流程規則
 
-在這個專案中，**任何需要你協助執行 git 提交（本地或遠端）時，操作順序必須嚴格遵守：**
+在這個專案中，**只要需要你協助執行 git 提交（本地或遠端）時，操作順序必須嚴格遵守：**
 
 1. `git pull`：先從遠端拉取最新變更，處理衝突後再繼續。
 2. `git commit`：使用符合本檔案規則的 Conventional Commit 訊息建立提交。
 3. `git push`：最後才把本地提交推送到遠端。
 
-若使用者已經手動完成其中部分步驟（例如先自己 pull），你可以跳過已完成的步驟，但 **絕對不得在未 pull 的情況下直接進行 commit → push**。
+- 若使用者已經手動完成其中部分步驟（例如先自己 pull），你可以跳過已完成的步驟，  
+  但 **絕對不得在未 pull 的情況下直接進行 `commit → push`**。
+- 在實際執行任何 git 指令前，**必須先用自然語言向使用者說明你打算執行的步驟與指令，並等待使用者確認後再執行**。
 
-在實際執行任何 git 指令前，必須先用自然語言向使用者說明你打算執行的步驟與指令，並等待使用者確認後再執行。
+---
+
+## Commits 規範
+
+### 1. Commit 訊息格式
+
+請使用以下格式：
+
+```text
+<type>[可選 scope]: <description>
+
+[可選 body]
+
+[可選 footer(s)]
+```
+
+---
+
+### 2. 類型（type）
+
+優先使用以下類型：
+
+- **feat**: 新功能
+- **fix**: 錯誤修復
+- **docs**: 文件相關修改
+- **style**: 格式調整（不影響程式邏輯，如空白、分號等）
+- **refactor**: 重構（非修 bug、非加功能）
+- **perf**: 效能優化
+- **test**: 測試新增或修正
+- **build**: 建置系統或相依套件變更
+- **ci**: CI/CD 流程變更
+- **chore**: 雜項或維護性工作（不影響產品功能）
+
+---
+
+### 3. Scope（範圍）
+
+- scope 為 **可選**
+- 若有幫助，請使用 **簡短名詞** 描述影響範圍
+
+範例：
+
+```text
+feat(auth): 新增 SSO 登入
+fix(api): 處理空 payload
+docs(readme): 更新安裝步驟
+```
+
+---
+
+### 4. Description（描述）
+
+- 預設使用 **英文小寫**（除非團隊規範改為中文）
+- 描述需 **簡潔且具體**
+- **不要加句號結尾**
+- 使用 **祈使句（imperative）**
+
+建議寫法：
+
+```text
+add user avatar upload
+fix retry logic for webhook timeout
+```
+
+---
+
+### 5. Breaking Changes（破壞性變更）
+
+若為破壞性修改，請在 type 後加上 `!`：
+
+```text
+feat(api)!: 移除 v1 session endpoint
+refactor(core)!: 修改 plugin lifecycle hooks
+```
+
+必要時在 footer 加上：
+
+```text
+BREAKING CHANGE: 說明變更內容、影響對象、遷移方式
+```
+
+---
+
+### 6. Body（內文）
+
+僅在「有價值」時補充，內容可以包含：
+
+- 為什麼需要這個變更
+- 重要實作細節
+- 取捨或副作用
+
+---
+
+### 7. Footer（附註）
+
+常見用途：
+
+```text
+BREAKING CHANGE: ...
+Refs: #123
+Closes: #456
+```
+
+---
+
+### 8. 選擇規則（Selection Rules）
+
+- 若同時包含功能與修復 → **優先拆成多個 commit**
+- 若只能寫一個 → **選主要意圖**
+- 不要捏造 diff 中不存在的變更
+- 若使用者只要 commit message → **不要多餘說明**
+
+---
+
+### 9. 輸出規則（Output Rules）
+
+當被要求產生 commit message 時：
+
+1. 第一行必須符合 Conventional Commit 格式
+2. 僅在必要時補 body / footer
+3. 預設輸出為純文字（除非另有要求）
+
+---
+
+### 10. 良好範例
+
+```text
+feat(auth): add Google OAuth login
+fix(upload): prevent duplicate file submissions
+docs(readme): clarify local development setup
+refactor(api): simplify error mapping
+perf(search): cache tag aggregation results
+test(payment): add webhook retry coverage
+chore(deps): upgrade vite to 6
+ci(github): add release workflow
+feat(api)!: remove legacy token endpoint
+
+BREAKING CHANGE: clients must migrate from /v1/token to /v2/token
+```
+
+---
+
+### 11. 不良範例
+
+```text
+added new login feature
+fix bug
+Update stuff
+feat: Added New Feature
+```
+
+---
 
 ## Release 規則
 
@@ -29,115 +179,5 @@ Follow the Conventional Commits 1.0.0 style strictly.
   - 本次版本的簡短說明（例如：新增了哪些主要功能或修正了哪些問題）
   - 若有破壞性修改，需在這裡特別標註
 - 若 `README.md` 尚未有 Release 區塊，先幫使用者在 README 底部加上一個簡單的「Release Notes」章節，然後再加入這次版本的說明。
-- 在幫忙產生 release 描述或 changelog 時，優先復用或同步到 `README.md` 的 Release Notes，避免兩邊內容不一致。
+- 在幫忙產生 release 描述或 changelog 時，**優先復用或同步到 `README.md` 的 Release Notes**，避免兩邊內容不一致。
 
-## Commit message format
-
-Use this format:
-
-<type>[optional scope]: <description>
-
-[optional body]
-
-[optional footer(s)]
-
-## Allowed types
-
-Prefer these types:
-
-- feat: a new feature
-- fix: a bug fix
-- docs: documentation only changes
-- style: formatting, missing semi colons, white-space, etc. (no code meaning change)
-- refactor: code change that neither fixes a bug nor adds a feature
-- perf: code change that improves performance
-- test: adding or correcting tests
-- build: build system or external dependency changes
-- ci: CI/CD pipeline changes
-- chore: maintenance work or misc non-product changes
-
-## Scope rules
-
-- Scope is optional.
-- When helpful, use a short noun describing the area changed.
-- Examples:
-  - feat(auth): add SSO login
-  - fix(api): handle empty payload
-  - docs(readme): update setup steps
-
-## Description rules
-
-- Use lower case English unless the user explicitly wants another language.
-- Keep the description concise and specific.
-- Do not end the description with a period.
-- Prefer imperative style:
-  - "add user avatar upload"
-  - "fix retry logic for webhook timeout"
-
-## Breaking changes
-
-If the change is breaking, use one of these:
-
-- feat(api)!: remove v1 session endpoint
-- refactor(core)!: change plugin lifecycle hooks
-
-And when needed, add a footer:
-
-BREAKING CHANGE: explain what changed, who is affected, and how to migrate
-
-## Body rules
-
-Add a body only when useful. Use it to explain:
-- why the change was needed
-- important implementation details
-- trade-offs or side effects
-
-## Footer rules
-
-Use footers when relevant, for example:
-- BREAKING CHANGE: ...
-- Refs: #123
-- Closes: #456
-
-## Selection rules
-
-- If the change includes both feature and fix work, prefer splitting into multiple commits.
-- If only one commit message is requested, choose the primary intent of the change.
-- Do not invent changes not present in the diff or user request.
-- Do not output extra commentary when the user asks for a commit message only.
-
-## Output rules
-
-When asked for a commit message:
-1. First line must be a valid Conventional Commit header.
-2. Add body/footer only if they provide clear value.
-3. Return plain text only unless the user asks for alternatives.
-
-## Good examples
-
-feat(auth): add Google OAuth login
-
-fix(upload): prevent duplicate file submissions
-
-docs(readme): clarify local development setup
-
-refactor(api): simplify error mapping
-
-perf(search): cache tag aggregation results
-
-test(payment): add webhook retry coverage
-
-chore(deps): upgrade vite to 6
-
-ci(github): add release workflow
-
-feat(api)!: remove legacy token endpoint
-
-BREAKING CHANGE: clients must migrate from /v1/token to /v2/token
-
-## Bad examples
-
-added new login feature
-fix bug
-Update stuff
-feat: Added New Feature.

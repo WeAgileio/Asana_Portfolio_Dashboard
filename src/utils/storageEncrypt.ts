@@ -87,7 +87,14 @@ export async function encrypt(plainText: string): Promise<string> {
 /** 解密：先嘗試 AES-GCM，失敗或無 crypto.subtle 時當作 base64 解碼 */
 export async function decrypt(base64: string): Promise<string> {
   if (!subtle) {
-    return decodeFallback(base64);
+    try {
+      return decodeFallback(base64);
+    } catch (e) {
+      if (typeof console !== "undefined" && console.warn) {
+        console.warn("[storageEncrypt] base64 解碼失敗", e);
+      }
+      return "";
+    }
   }
   try {
     const key = await getKey();
@@ -102,6 +109,10 @@ export async function decrypt(base64: string): Promise<string> {
     );
     return new TextDecoder().decode(dec);
   } catch {
-    return decodeFallback(base64);
+    try {
+      return decodeFallback(base64);
+    } catch {
+      return "";
+    }
   }
 }

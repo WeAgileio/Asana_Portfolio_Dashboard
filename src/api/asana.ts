@@ -102,6 +102,12 @@ export async function fetchSectionsByProject(
   }));
 }
 
+// 用於從 custom fields 取出請款金額的欄位名稱（可透過 VITE_BILLING_FIELD_NAME 覆蓋），預設使用「請款金額」
+const BILLING_FIELD_NAME =
+  (typeof import.meta !== "undefined" &&
+    (import.meta as any).env?.VITE_BILLING_FIELD_NAME) ||
+  "請款金額";
+
 export async function fetchTasksBySection(
   sectionGid: string
 ): Promise<AsanaTask[]> {
@@ -111,26 +117,44 @@ export async function fetchTasksBySection(
   do {
     const params: Record<string, string> = {
       opt_fields:
-        "gid,name,completed,completed_at,created_at,modified_at,due_on,assignee.name,resource_subtype,permalink_url",
+        "gid,name,completed,completed_at,created_at,modified_at,due_on,assignee.name,resource_subtype,permalink_url,custom_fields.name,custom_fields.number_value",
       limit: "100",
     };
     if (offset) params["offset"] = offset;
 
     const res = await api.get(`/sections/${sectionGid}/tasks`, { params });
 
-    const tasks = res.data.data.map((t: AsanaTask) => ({
-      gid: t.gid,
-      name: t.name,
-      completed: t.completed,
-      completed_at: t.completed_at ?? null,
-      // Asana 會提供 created_at，若取不到則以 null 表示
-      created_at: (t as any).created_at ?? null,
-      modified_at: (t as any).modified_at ?? null,
-      due_on: t.due_on ?? null,
-      assignee: t.assignee ?? null,
-      resource_subtype: (t as any).resource_subtype ?? null,
-      permalink_url: t.permalink_url,
-    }));
+    const tasks = res.data.data.map((t: any) => {
+      const billingField =
+        Array.isArray(t.custom_fields) && BILLING_FIELD_NAME
+          ? t.custom_fields.find(
+              (cf: any) =>
+                cf && typeof cf.name === "string" && cf.name === BILLING_FIELD_NAME
+            )
+          : null;
+
+      const billingAmountRaw =
+        billingField && typeof billingField.number_value === "number"
+          ? billingField.number_value
+          : null;
+
+      const task: AsanaTask = {
+        gid: t.gid,
+        name: t.name,
+        completed: t.completed,
+        completed_at: t.completed_at ?? null,
+        // Asana 會提供 created_at，若取不到則以 null 表示
+        created_at: (t as any).created_at ?? null,
+        modified_at: (t as any).modified_at ?? null,
+        due_on: t.due_on ?? null,
+        assignee: t.assignee ?? null,
+        resource_subtype: (t as any).resource_subtype ?? null,
+        permalink_url: t.permalink_url,
+        billingAmount: billingAmountRaw,
+      };
+
+      return task;
+    });
 
     allTasks.push(...tasks);
     offset = res.data.next_page?.offset;

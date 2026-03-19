@@ -4,14 +4,31 @@ import { encrypt, decrypt } from "@/utils/storageEncrypt";
 
 const STORAGE_KEY = "asana_pat_enc";
 
+/** 非安全環境（http 非 localhost）時 crypto.subtle 不可用，改用簡單雜湊區分不同 PAT */
+function hashTokenFallback(token: string): string {
+  let h = 0;
+  const s = token;
+  for (let i = 0; i < s.length; i++) {
+    h = (Math.imul(31, h) + s.charCodeAt(i)) >>> 0;
+  }
+  return "f_" + h.toString(16);
+}
+
 async function hashToken(token: string): Promise<string> {
-  const buf = await crypto.subtle.digest(
-    "SHA-256",
-    new TextEncoder().encode(token)
-  );
-  return Array.from(new Uint8Array(buf))
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
+  if (typeof crypto === "undefined" || !crypto.subtle) {
+    return hashTokenFallback(token);
+  }
+  try {
+    const buf = await crypto.subtle.digest(
+      "SHA-256",
+      new TextEncoder().encode(token)
+    );
+    return Array.from(new Uint8Array(buf))
+      .map((b) => b.toString(16).padStart(2, "0"))
+      .join("");
+  } catch {
+    return hashTokenFallback(token);
+  }
 }
 
 export const useAuthStore = defineStore("auth", () => {
@@ -23,7 +40,7 @@ export const useAuthStore = defineStore("auth", () => {
 
   const isLoggedIn = computed(() => !!token.value);
 
-  /** 從 localStorage 讀取並解密後寫入 memory，失敗則清除；完成後才設 initialized */
+  /** 從 localStorage 讀取並解密後寫入 memory；解密失敗時不刪除儲存內容，避免重新整理誤刪 PAT */
   async function loadFromStorage(): Promise<void> {
     if (initialized.value) return;
     try {
@@ -37,13 +54,13 @@ export const useAuthStore = defineStore("auth", () => {
         const trimmed = decrypted.trim();
         token.value = trimmed;
         tokenHash.value = await hashToken(trimmed);
-      } else {
-        localStorage.removeItem(STORAGE_KEY);
       }
-    } catch {
-      localStorage.removeItem(STORAGE_KEY);
+      // 解密結果為空時不刪除 localStorage，保留資料供除錯或手動清除
+    } catch (e) {
+      console.warn("[auth] 還原權杖失敗，請重新登入", e);
       token.value = null;
       tokenHash.value = null;
+      // 不再移除 localStorage，避免重新整理或暫時錯誤時誤刪已存 PAT
     } finally {
       initialized.value = true;
     }

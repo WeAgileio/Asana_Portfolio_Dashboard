@@ -15,8 +15,12 @@ type SectionProgress = {
   totalTasks: number;
   completedTasks: number;
   completionRate: number;
-  status: "not-started" | "in-progress" | "done";
+  status: "not-started" | "in-progress" | "done" | "behind" | "at-risk";
   latestMilestoneDueOn: string | null;
+  /** 此 section 內所有任務的請款金額總和（依指定 custom field） */
+  billingTotal: number;
+  /** 此 section 內「已完成」任務的請款金額總和（視為已收） */
+  billingCollectedTotal: number;
   tasks: AsanaTask[];
 };
 
@@ -39,6 +43,77 @@ const displayItems = computed(() =>
     (i): i is ProjectProgress => i != null && i.project != null
   )
 );
+
+// 專案列表：滑鼠拖曳左右滾動用狀態
+const isDraggingTimeline = ref(false);
+const dragStartX = ref(0);
+const dragScrollLeft = ref(0);
+const activeTimelineEl = ref<HTMLElement | null>(null);
+const timelineDragMoved = ref(false);
+
+function onTimelineMouseDown(event: MouseEvent) {
+  const el = event.currentTarget as HTMLElement | null;
+  if (!el) return;
+  isDraggingTimeline.value = true;
+  timelineDragMoved.value = false;
+  activeTimelineEl.value = el;
+  dragStartX.value = event.clientX;
+  dragScrollLeft.value = el.scrollLeft;
+}
+
+function onTimelineMouseMove(event: MouseEvent) {
+  if (!isDraggingTimeline.value || !activeTimelineEl.value) return;
+  const dx = event.clientX - dragStartX.value;
+  if (Math.abs(dx) > 3) {
+    timelineDragMoved.value = true;
+  }
+  activeTimelineEl.value.scrollLeft = dragScrollLeft.value - dx;
+}
+
+function onTimelineMouseUp() {
+  isDraggingTimeline.value = false;
+  activeTimelineEl.value = null;
+}
+
+function onSectionClick(
+  project: AsanaProject,
+  sectionProgress: SectionProgress
+) {
+  // 若剛剛是拖動時間軸，不要打開任務詳情
+  if (timelineDragMoved.value) {
+    timelineDragMoved.value = false;
+    return;
+  }
+  selectedSection.value = {
+    project,
+    section: sectionProgress.section,
+    tasks: sectionProgress.tasks,
+  };
+}
+
+function projectBillingTotal(p: ProjectProgress): number {
+  return p.sections.reduce((sum, s) => sum + (s.billingTotal || 0), 0);
+}
+
+function projectBillingCollectedTotal(p: ProjectProgress): number {
+  return p.sections.reduce(
+    (sum, s) => sum + (s.billingCollectedTotal || 0),
+    0
+  );
+}
+
+function projectBillingCollectedRate(p: ProjectProgress): number {
+  const total = projectBillingTotal(p);
+  if (!total) return 0;
+  return (projectBillingCollectedTotal(p) / total) * 100;
+}
+
+/** 將已收比例換算成 0~10 顆錢幣 */
+function projectBillingFilledCoins(p: ProjectProgress): number {
+  const rate = projectBillingCollectedRate(p);
+  if (!projectBillingTotal(p)) return 0;
+  return Math.max(0, Math.min(10, Math.round(rate / 10)));
+}
 
 const projectsOptions = ref<AsanaProject[]>([]);
 const projectsOptionsLoading = ref(false);
@@ -104,6 +179,32 @@ function todayLabel(): string {
   });
 }
 
+/** 截止日是否在「今天起算一週內」或「已經過期但尚未完成」：
+ * - 含今天、含第 7 天
+ * - 若截止日在今天之前，視為符合條件（只要還有未完成任務，外層會套用紅色）
+ */
+function isDueWithinOneWeek(dueDateStr: string): boolean {
+  const due = new Date(dueDateStr);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  due.setHours(0, 0, 0, 0);
+  const oneWeekLater = new Date(today);
+  oneWeekLater.setDate(oneWeekLater.getDate() + 7);
+  // 若已到期（due < today）也算在內；或在未來 7 天內
+  return due <= oneWeekLater;
+}
+
+/** 截止日是否在「今天起算兩週內」（含今天、含第 14 天） */
+function isDueWithinTwoWeeks(dueDateStr: string): boolean {
+  const due = new Date(dueDateStr);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  due.setHours(0, 0, 0, 0);
+  const twoWeeksLater = new Date(today);
+  twoWeeksLater.setDate(twoWeeksLater.getDate() + 14);
+  return due >= today && due <= twoWeeksLater;
+}
+
 function calcSectionProgress(
   section: AsanaSection,
   tasks: AsanaTask[]
@@ -112,6 +213,20 @@ function calcSectionProgress(
   const completedTasks = tasks.filter((t) => t.completed).length;
   const completionRate =
     totalTasks === 0 ? 0 : completedTasks / Math.max(totalTasks, 1);
+
+  // 請款金額總和（僅計算有 billingAmount 的任務）
+  const billingTotal = tasks.reduce(
+    (sum, t) => sum + (typeof t.billingAmount === "number" ? t.billingAmount : 0),
+    0
+  );
+
+  // 已收金額：僅計算「已完成」任務的請款金額
+  const billingCollectedTotal = tasks.reduce(
+    (sum, t) =>
+      sum +
+      (t.completed && typeof t.billingAmount === "number" ? t.billingAmount : 0),
+    0
+  );
 
   // 里程碑任務中，找最晚的 due_on
   const milestoneDueDates = tasks
@@ -132,14 +247,56 @@ function calcSectionProgress(
 
   // 顏色狀態邏輯
   let status: SectionProgress["status"];
-  if (totalTasks === 0 || completedTasks === 0) {
+  if (totalTasks === 0) {
+    // 完全沒有任務 → 一律視為未開始（灰色）
     status = "not-started";
-  } else if (completedTasks < totalTasks) {
-    status = "in-progress";
-  } else {
+  } else if (completedTasks === totalTasks) {
+    // 全部完成 → 綠色
     status = "done";
+  } else {
+    // 有任務未完成（包含完成數為 0 的情況）先視為進行中，
+    // 之後再依截止日決定是否要標示為紅 / 黃
+    status = "in-progress";
+  }
+  // 有里程碑截止日，但時間點「不在兩週內、也不在一週內」，
+  // 且完全沒有任何任務完成 → 視為還沒開始（維持灰色）
+  if (
+    completedTasks === 0 &&
+    latestMilestoneDueOn &&
+    !isDueWithinTwoWeeks(latestMilestoneDueOn) &&
+    !isDueWithinOneWeek(latestMilestoneDueOn)
+  ) {
+    status = "not-started";
   }
 
+ // 根本沒有里程碑截止日，且完全沒有任何任務完成 → 一樣視為還沒開始（灰色）
+ if (!latestMilestoneDueOn && completedTasks === 0) {
+    status = "not-started";
+  }
+
+  // 截止日在一週內（或已過期），且有任務尚未完成 → 一律視為落後（紅色）
+  if (
+    status === "in-progress" &&
+    latestMilestoneDueOn &&
+    isDueWithinOneWeek(latestMilestoneDueOn)
+  ) {
+    status = "behind";
+  }
+
+  // 截止日在兩週內且超過 1/4 任務未完成（完成度 < 75%）→ 標示為風險（黃色）
+  //（若同時符合紅色條件，會先被上面吃掉，這裡就不會再進來）
+  if (
+    status === "in-progress" &&
+    latestMilestoneDueOn &&
+    isDueWithinTwoWeeks(latestMilestoneDueOn) && 
+    !isDueWithinOneWeek(latestMilestoneDueOn) &&
+    completionRate < 0.75
+  ) {
+    status = "at-risk";
+  }
+
+ 
+  
   return {
     section,
     totalTasks,
@@ -147,6 +304,8 @@ function calcSectionProgress(
     completionRate,
     status,
     latestMilestoneDueOn,
+    billingTotal,
+    billingCollectedTotal,
     tasks,
   };
 }
@@ -263,10 +422,16 @@ onMounted(() => {
             <span class="legend-dot legend-not-started" /> 尚未開始
           </span>
           <span class="legend-item">
-            <span class="legend-dot legend-progress" /> 50%（進行中）
+            <span class="legend-dot legend-progress" /> 進行中
           </span>
           <span class="legend-item">
-            <span class="legend-dot legend-done" /> 100%（已完成）
+            <span class="legend-dot legend-done" /> 已完成
+          </span>
+          <span class="legend-item">
+            <span class="legend-dot legend-behind" /> 落後（一週內截止未完成）
+          </span>
+          <span class="legend-item">
+            <span class="legend-dot legend-at-risk" /> 風險（兩週內截止且逾 1/4 未完成）
           </span>
         </div>
         <div class="meta-right">
@@ -368,10 +533,34 @@ onMounted(() => {
         >
           <div class="project-name">
             <div class="project-name-text">
-              {{ item.project.name }}
+              <span class="project-name-label">
+                {{ item.project.name }}
+              </span>
+              <span
+                v-if="projectBillingTotal(item) > 0"
+                class="project-billing-total"
+              >
+                {{ projectBillingCollectedTotal(item).toLocaleString("zh-TW") }}/{{ projectBillingTotal(item).toLocaleString("zh-TW") }}
+                <div class="project-billing-coins">
+                  <span
+                    v-for="n in 10"
+                    :key="n"
+                    :class="['coin', { filled: n <= projectBillingFilledCoins(item) }]"
+                  >
+                    💰
+                  </span>
+                </div>
+              </span>
             </div>
           </div>
-          <div class="project-timeline">
+          <div
+            class="project-timeline"
+            :class="{ dragging: isDraggingTimeline }"
+            @mousedown.prevent="onTimelineMouseDown"
+            @mousemove.prevent="onTimelineMouseMove"
+            @mouseup="onTimelineMouseUp"
+            @mouseleave="onTimelineMouseUp"
+          >
             <div
               v-if="item.loadingTasks"
               class="timeline-loading-overlay"
@@ -382,7 +571,7 @@ onMounted(() => {
               v-for="sp in item.sections"
               :key="sp.section.gid"
               class="section-block"
-              @click="selectedSection = { project: item.project, section: sp.section, tasks: sp.tasks }"
+              @click="onSectionClick(item.project, sp)"
             >
               <div class="section-header">
                 <span class="section-name">
@@ -390,7 +579,15 @@ onMounted(() => {
                 </span>
               </div>
               <div class="section-date">
-                {{ sp.latestMilestoneDueOn || "-" }}
+                <div class="section-billing">
+                  <span v-if="sp.billingTotal > 0">
+                    💰 {{ sp.billingTotal.toLocaleString("zh-TW") }}
+                  </span>
+                  <span v-else>&nbsp;</span>
+                </div>
+                <div>
+                  {{ sp.latestMilestoneDueOn || "-" }}
+                </div>
               </div>
               <div class="section-bar">
                 <div
@@ -398,6 +595,10 @@ onMounted(() => {
                   :class="[
                     sp.status === 'done'
                       ? 'status-done'
+                      : sp.status === 'behind'
+                      ? 'status-behind'
+                      : sp.status === 'at-risk'
+                      ? 'status-at-risk'
                       : sp.status === 'in-progress'
                       ? 'status-progress'
                       : 'status-not-started',
@@ -405,7 +606,13 @@ onMounted(() => {
                   :style="{ width: `${Math.max(sp.completionRate * 100, 3)}%` }"
                 />
               </div>
-              <div class="section-meta">
+              <div
+                class="section-meta"
+                :class="{
+                  'section-meta-behind': sp.status === 'behind',
+                  'section-meta-at-risk': sp.status === 'at-risk',
+                }"
+              >
                 <span class="rate">
                   完成度：{{ (sp.completionRate * 100).toFixed(0) }}%
                 </span>
@@ -467,6 +674,19 @@ onMounted(() => {
                     class="badge assignee"
                   >
                     指派給：{{ task.assignee.name }}
+                  </span>
+                  <span
+                    v-if="task.due_on"
+                    class="badge due-date"
+                  >
+                    截止日：
+                    {{
+                      new Date(task.due_on).toLocaleDateString("zh-TW", {
+                        year: "numeric",
+                        month: "2-digit",
+                        day: "2-digit",
+                      })
+                    }}
                   </span>
                 </div>
               </div>
@@ -604,6 +824,30 @@ onMounted(() => {
   font-size: 15px;
   font-weight: 800;
   color: #111827;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+.project-name-label {
+  white-space: nowrap;
+}
+.project-billing-total {
+  font-size: 14px;
+  font-weight: 700;
+  color: #111827;
+}
+.project-billing-coins {
+  margin-top: 4px;
+  display: flex;
+  gap: 2px;
+}
+.project-billing-coins .coin {
+  font-size: 18px;
+  opacity: 0.25;
+}
+.project-billing-coins .coin.filled {
+  opacity: 1;
 }
 .project-filter {
   margin: 16px 0 0;
@@ -712,6 +956,7 @@ onMounted(() => {
   cursor: not-allowed;
 }
 .project-timeline {
+  position: relative;
   background: #ffffff;
   border-radius: 12px;
   border: 1px solid #e5e7eb;
@@ -720,6 +965,10 @@ onMounted(() => {
   flex-direction: row;
   gap: 8px;
   overflow-x: auto;
+  cursor: grab;
+}
+.project-timeline.dragging {
+  cursor: grabbing;
   position: relative;
 }
 .timeline-loading-overlay {
@@ -760,6 +1009,12 @@ onMounted(() => {
   font-size: 11px;
   color: #6b7280;
 }
+.section-billing {
+  margin-bottom: 2px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #111827;
+}
 .section-bar {
   position: relative;
   width: 100%;
@@ -784,12 +1039,26 @@ onMounted(() => {
 .status-done {
   background: #22c55e;
 }
+.status-behind {
+  background: #ef4444;
+}
+.status-at-risk {
+  background: #eab308;
+}
 .section-meta {
   display: flex;
   align-items: center;
   gap: 8px;
   font-size: 11px;
   color: #4b5563;
+  padding: 4px 8px;
+  border-radius: 6px;
+}
+.section-meta-behind {
+  background: rgba(239, 68, 68, 0.15);
+}
+.section-meta-at-risk {
+  background: rgba(234, 179, 8, 0.2);
 }
 .section-meta .rate {
   font-weight: 600;
@@ -813,6 +1082,12 @@ onMounted(() => {
 }
 .legend-done {
   background: #22c55e;
+}
+.legend-behind {
+  background: #ef4444;
+}
+.legend-at-risk {
+  background: #eab308;
 }
 .selected-overlay {
   position: fixed;
