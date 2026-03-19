@@ -33,19 +33,22 @@ app.use(express.json());
 
 const ASANA_BASE_URL = "https://app.asana.com/api/1.0";
 
+/** 取得請求中的 Asana 權杖：優先 Authorization Bearer，其次 session，最後為可選的預設 PAT（開發用） */
+function getAccessToken(req) {
+  const auth = req.headers.authorization;
+  if (auth && typeof auth === "string" && auth.startsWith("Bearer ")) {
+    const t = auth.slice(7).trim();
+    if (t) return t;
+  }
+  if (req.session?.asanaAccessToken) return req.session.asanaAccessToken;
+  if (ASANA_DEFAULT_PAT && ASANA_DEFAULT_PAT.trim()) return ASANA_DEFAULT_PAT.trim();
+  return null;
+}
+
 function requireAuth(req, res, next) {
-  const token = req.session?.asanaAccessToken;
-  if (token) {
-    return next();
-  }
-  // 若設定檔有預設 PAT，自動當作已登入使用
-  if (ASANA_DEFAULT_PAT && ASANA_DEFAULT_PAT.trim()) {
-    if (!req.session) req.session = {};
-    req.session.asanaAccessToken = ASANA_DEFAULT_PAT.trim();
-    return next();
-  }
+  if (getAccessToken(req)) return next();
   return res.status(401).json({
-    message: "尚未登入 Asana，請先在前端點擊「登入 Asana」或使用個人權杖。",
+    message: "尚未登入，請使用個人權杖（PAT）登入後使用。",
   });
 }
 
@@ -129,15 +132,7 @@ app.post("/auth/pat-login", (req, res) => {
 });
 
 app.get("/auth/status", (req, res) => {
-  if (req.session?.asanaAccessToken) {
-    return res.json({ authenticated: true });
-  }
-  if (ASANA_DEFAULT_PAT?.trim()) {
-    if (!req.session) req.session = {};
-    req.session.asanaAccessToken = ASANA_DEFAULT_PAT.trim();
-    return res.json({ authenticated: true });
-  }
-  res.json({ authenticated: false });
+  res.json({ authenticated: !!getAccessToken(req) });
 });
 
 // ───────────────── 通用 Asana API Proxy ─────────────────
@@ -158,7 +153,7 @@ async function asanaGet(path, accessToken, params = {}) {
 
 // 將前端的 GET /api/* 轉發到 Asana API
 app.get("/api/*", requireAuth, async (req, res) => {
-  const accessToken = req.session.asanaAccessToken;
+  const accessToken = getAccessToken(req);
   const asanaPath = req.path.replace(/^\/api/, "");
 
   try {

@@ -1,4 +1,5 @@
 import axios from "axios";
+import { useAuthStore } from "@/stores/auth";
 import type {
   AsanaProject,
   AsanaSection,
@@ -15,6 +16,23 @@ const api = axios.create({
     "Content-Type": "application/json",
   },
 });
+
+// 請求時帶上本地儲存的個人權杖（加密還原後）
+api.interceptors.request.use(async (config) => {
+  const auth = useAuthStore();
+  const token = await auth.getToken();
+  if (token) config.headers.Authorization = `Bearer ${token}`;
+  return config;
+});
+
+// 401 時清除權杖，觸發顯示登入頁
+api.interceptors.response.use(
+  (res) => res,
+  (err) => {
+    if (err.response?.status === 401) useAuthStore().clearToken();
+    return Promise.reject(err);
+  }
+);
 
 // ─── 基礎 API 請求 ────────────────────────────────────────────────────────────
 

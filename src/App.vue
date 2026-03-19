@@ -1,7 +1,11 @@
 <script setup lang="ts">
-import { ref, computed, type Component } from "vue";
+import { ref, computed, onMounted, type Component } from "vue";
+import { useAuthStore } from "@/stores/auth";
+import Login from "@/views/Login.vue";
 import WeeklyTrends from "@/views/WeeklyTrends.vue";
 import ProgressTimeline from "@/views/ProgressTimeline.vue";
+
+const auth = useAuthStore();
 
 type Tab = "trends" | "progress";
 
@@ -13,10 +17,17 @@ const tabComponents: Record<Tab, Component> = {
 };
 
 const currentView = computed(() => tabComponents[currentTab.value]);
+
+onMounted(() => {
+  auth.loadFromStorage();
+});
 </script>
 
 <template>
   <div class="app-root">
+    <div v-if="!auth.initialized" class="app-loading">載入中…</div>
+    <Login v-else-if="!auth.isLoggedIn" />
+    <template v-else>
     <nav class="top-nav">
       <div class="nav-left">
         <span class="logo-dot" />
@@ -37,6 +48,13 @@ const currentView = computed(() => tabComponents[currentTab.value]);
         >
           專案進度
         </button>
+        <button
+          type="button"
+          class="nav-tab nav-logout"
+          @click="auth.clearToken()"
+        >
+          登出
+        </button>
       </div>
     </nav>
 
@@ -45,6 +63,7 @@ const currentView = computed(() => tabComponents[currentTab.value]);
         <component :is="currentView" />
       </keep-alive>
     </main>
+    </template>
   </div>
 </template>
 
@@ -97,8 +116,24 @@ const currentView = computed(() => tabComponents[currentTab.value]);
   color: #4f46e5;
   font-weight: 600;
 }
+.nav-logout {
+  margin-left: auto;
+  color: #6b7280;
+}
+.nav-logout:hover {
+  color: #dc2626;
+  background: #fef2f2;
+}
 .app-main {
   flex: 1;
+}
+.app-loading {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  color: #6b7280;
 }
 </style>
 

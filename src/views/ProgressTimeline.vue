@@ -1,11 +1,14 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from "vue";
+import { useAuthStore } from "@/stores/auth";
 import {
   fetchProjects,
   fetchSectionsByProject,
   fetchTasksBySection,
 } from "@/api/asana";
 import type { AsanaProject, AsanaSection, AsanaTask } from "@/types/asana";
+
+const auth = useAuthStore();
 
 type SectionProgress = {
   section: AsanaSection;
@@ -41,12 +44,18 @@ const projectsOptions = ref<AsanaProject[]>([]);
 const projectsOptionsLoading = ref(false);
 
 const selectedProjectGids = ref<string[]>([]);
-const LS_KEY_SELECTED_PROJECTS = "asana_progress_selected_project_gids_v1";
+const LS_KEY_PREFIX = "asana_progress_selected_project_gids_v1";
 const projectPickerOpen = ref(false);
 
-function loadSelectedFromLocalStorage() {
+function getSelectedProjectsStorageKey(): string {
+  const hash = auth.getTokenHash();
+  return `${LS_KEY_PREFIX}_${hash ?? ""}`;
+}
+
+function loadSelectedFromLocalStorage(): string[] {
   try {
-    const raw = localStorage.getItem(LS_KEY_SELECTED_PROJECTS);
+    const key = getSelectedProjectsStorageKey();
+    const raw = localStorage.getItem(key);
     if (!raw) return [];
     const parsed = JSON.parse(raw);
     if (!Array.isArray(parsed)) return [];
@@ -58,10 +67,8 @@ function loadSelectedFromLocalStorage() {
 
 function persistSelectedToLocalStorage() {
   try {
-    localStorage.setItem(
-      LS_KEY_SELECTED_PROJECTS,
-      JSON.stringify(selectedProjectGids.value)
-    );
+    const key = getSelectedProjectsStorageKey();
+    localStorage.setItem(key, JSON.stringify(selectedProjectGids.value));
   } catch {
     // ignore
   }
@@ -70,6 +77,15 @@ function persistSelectedToLocalStorage() {
 watch(selectedProjectGids, () => {
   persistSelectedToLocalStorage();
 });
+
+// 切換 PAT（登出／換帳號）時，改為載入該 PAT 對應的專案選擇
+watch(
+  () => auth.getTokenHash(),
+  () => {
+    selectedProjectGids.value = loadSelectedFromLocalStorage();
+  }
+);
+
 const selectedSection = ref<{
   project: AsanaProject;
   section: AsanaSection;
