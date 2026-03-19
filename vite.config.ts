@@ -11,15 +11,20 @@ export default defineConfig({
   },
   server: {
     port: 5173,
+    // Docker 內用 VITE_PROXY_TARGET=http://backend:3001，本機開發預設 localhost:3001
     proxy: {
-      // 開發環境代理到本機 Node 後端（處理 OAuth + 轉發 Asana API）
       "/api": {
-        target: "http://localhost:3001",
+        target: process.env.VITE_PROXY_TARGET || "http://localhost:3001",
         changeOrigin: true,
         secure: false,
       },
       "/auth": {
-        target: "http://localhost:3001",
+        target: process.env.VITE_PROXY_TARGET || "http://localhost:3001",
+        changeOrigin: true,
+        secure: false,
+      },
+      "/widget": {
+        target: process.env.VITE_PROXY_TARGET || "http://localhost:3001",
         changeOrigin: true,
         secure: false,
       },

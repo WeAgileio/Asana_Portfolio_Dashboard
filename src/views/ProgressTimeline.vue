@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, watch } from "vue";
+import { ref, computed, onMounted, watch } from "vue";
 import {
   fetchProjects,
   fetchSectionsByProject,
@@ -27,6 +27,15 @@ type ProjectProgress = {
 const loading = ref(false);
 const error = ref<string | null>(null);
 const items = ref<ProjectProgress[]>([]);
+/** 每次重新載入時遞增，避免舊的非同步回調寫入造成 undefined 或錯位 */
+const loadIdRef = ref(0);
+
+/** 僅渲染有效項目，避免 item 為 undefined 時讀取 item.project 報錯 */
+const displayItems = computed(() =>
+  items.value.filter(
+    (i): i is ProjectProgress => i != null && i.project != null
+  )
+);
 
 const projectsOptions = ref<AsanaProject[]>([]);
 const projectsOptionsLoading = ref(false);
@@ -126,6 +135,8 @@ async function loadProgress() {
   loading.value = true;
   error.value = null;
   items.value = [];
+  loadIdRef.value += 1;
+  const thisLoadId = loadIdRef.value;
 
   try {
     // 每次載入都重新抓一次專案清單，確保權杖或權限變更後可以看到最新專案
@@ -183,6 +194,8 @@ async function loadProgress() {
           const sectionProgressList = sectionProgressListRaw.filter(
             (x): x is SectionProgress => x !== null
           );
+          // 若使用者已重新載入，此回調屬於舊的 load，不再寫入避免錯位或 undefined
+          if (thisLoadId !== loadIdRef.value) return;
           items.value[index] = {
             project,
             sections: sectionProgressList,
@@ -323,7 +336,7 @@ onMounted(() => {
       </div>
       <section v-else class="timeline">
         <article
-          v-for="item in items"
+          v-for="item in displayItems"
           :key="item.project.gid"
           class="project-row"
         >

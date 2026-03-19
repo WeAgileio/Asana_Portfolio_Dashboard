@@ -1,17 +1,13 @@
 <script setup lang="ts">
 import { ref, computed, type Component } from "vue";
-import Dashboard from "@/views/Dashboard.vue";
-import WeeklyUpdates from "@/views/WeeklyUpdates.vue";
 import WeeklyTrends from "@/views/WeeklyTrends.vue";
 import ProgressTimeline from "@/views/ProgressTimeline.vue";
 
-type Tab = "dashboard" | "weekly" | "trends" | "progress";
+type Tab = "trends" | "progress";
 
-const currentTab = ref<Tab>("dashboard");
+const currentTab = ref<Tab>("trends");
 
 const tabComponents: Record<Tab, Component> = {
-  dashboard: Dashboard,
-  weekly: WeeklyUpdates,
   trends: WeeklyTrends,
   progress: ProgressTimeline,
 };
@@ -27,20 +23,6 @@ const currentView = computed(() => tabComponents[currentTab.value]);
         <span class="nav-title">Asana 儀表板</span>
       </div>
       <div class="nav-tabs">
-        <button
-          class="nav-tab"
-          :class="{ active: currentTab === 'dashboard' }"
-          @click="currentTab = 'dashboard'"
-        >
-          專案概況
-        </button>
-        <button
-          class="nav-tab"
-          :class="{ active: currentTab === 'weekly' }"
-          @click="currentTab = 'weekly'"
-        >
-          本週任務更新
-        </button>
         <button
           class="nav-tab"
           :class="{ active: currentTab === 'trends' }"
