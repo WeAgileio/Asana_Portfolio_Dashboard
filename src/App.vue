@@ -5,7 +5,7 @@ import ProgressTimeline from "@/views/ProgressTimeline.vue";
 
 type Tab = "trends" | "progress";
 
-const currentTab = ref<Tab>("trends");
+const currentTab = ref<Tab>("progress");
 
 const tabComponents: Record<Tab, Component> = {
   trends: WeeklyTrends,
