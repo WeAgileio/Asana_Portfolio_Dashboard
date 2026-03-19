@@ -22,9 +22,26 @@ async function login() {
     });
     await auth.saveToken(token);
   } catch (e: any) {
-    const msg = e.response?.data?.message || e.response?.status === 401
-      ? "權杖無效或已過期，請檢查後重試"
-      : "連線失敗，請稍後再試";
+    // 登入失敗時在 console 輸出詳細原因，方便除錯（例如 CORS、後端未啟動、網路錯誤）
+    console.error("[登入失敗]", {
+      message: e?.message,
+      code: e?.code,
+      status: e?.response?.status,
+      statusText: e?.response?.statusText,
+      data: e?.response?.data,
+      config: e?.config
+        ? {
+            url: e.config.url,
+            baseURL: e.config.baseURL,
+            method: e.config.method,
+          }
+        : undefined,
+      error: e,
+    });
+    const msg =
+      e.response?.data?.message || e.response?.status === 401
+        ? "權杖無效或已過期，請檢查後重試"
+        : "連線失敗，請稍後再試";
     error.value = msg;
   } finally {
     loading.value = false;
