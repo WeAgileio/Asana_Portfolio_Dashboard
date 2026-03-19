@@ -78,8 +78,8 @@ docs(readme): 更新安裝步驟
 建議寫法：
 
 ```text
-add user avatar upload
-fix retry logic for webhook timeout
+新增使用者頭像上傳
+修正 webhook 逾時的重試邏輯
 ```
 
 ---
@@ -89,8 +89,8 @@ fix retry logic for webhook timeout
 若為破壞性修改，請在 type 後加上 `!`：
 
 ```text
-feat(api)!: 移除 v1 session endpoint
-refactor(core)!: 修改 plugin lifecycle hooks
+feat(api)!: 移除 v1 session 端點
+refactor(core)!: 調整 plugin 生命週期鉤子
 ```
 
 必要時在 footer 加上：
@@ -116,7 +116,7 @@ BREAKING CHANGE: 說明變更內容、影響對象、遷移方式
 常見用途：
 
 ```text
-BREAKING CHANGE: ...
+BREAKING CHANGE: 說明破壞性變更內容
 Refs: #123
 Closes: #456
 ```
@@ -145,17 +145,17 @@ Closes: #456
 ### 10. 良好範例
 
 ```text
-feat(auth): add Google OAuth login
-fix(upload): prevent duplicate file submissions
-docs(readme): clarify local development setup
-refactor(api): simplify error mapping
-perf(search): cache tag aggregation results
-test(payment): add webhook retry coverage
-chore(deps): upgrade vite to 6
-ci(github): add release workflow
-feat(api)!: remove legacy token endpoint
+feat(auth): 新增 Google OAuth 登入
+fix(upload): 避免重複提交檔案
+docs(readme): 釐清本地開發環境設定
+refactor(api): 簡化錯誤對應邏輯
+perf(search): 快取標籤彙總結果
+test(payment): 新增 webhook 重試測試覆蓋
+chore(deps): 升級 vite 至 6
+ci(github): 新增 release 流程
+feat(api)!: 移除舊版 token 端點
 
-BREAKING CHANGE: clients must migrate from /v1/token to /v2/token
+BREAKING CHANGE: 客戶端須從 /v1/token 遷移至 /v2/token
 ```
 
 ---
@@ -163,10 +163,10 @@ BREAKING CHANGE: clients must migrate from /v1/token to /v2/token
 ### 11. 不良範例
 
 ```text
-added new login feature
-fix bug
-Update stuff
-feat: Added New Feature
+新增了登入功能（用了過去式，且無 type）
+修 bug（描述過於籠統）
+更新一些東西（語意不清）
+feat: 新增了新功能（description 勿用大寫開頭、勿用過去式）
 ```
 
 ---
