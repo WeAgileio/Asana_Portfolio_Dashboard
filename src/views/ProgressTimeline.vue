@@ -840,12 +840,16 @@ onMounted(() => {
 .project-billing-coins {
   margin-top: 2px;
   display: flex;
-  gap: 1px;
+  gap: 0;
+  align-items: center;
 }
 .project-billing-coins .coin {
   font-size: 18px;
   line-height: 1;
   opacity: 0.25;
+}
+.project-billing-coins .coin + .coin {
+  margin-left: -4px;
 }
 .project-billing-coins .coin.filled {
   opacity: 1;
