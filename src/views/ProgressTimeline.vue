@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, watch } from "vue";
+import { ref, computed, onMounted, watch, nextTick } from "vue";
 import { useAuthStore } from "@/stores/auth";
 import {
   fetchProjects,
@@ -50,6 +50,32 @@ const dragStartX = ref(0);
 const dragScrollLeft = ref(0);
 const activeTimelineEl = ref<HTMLElement | null>(null);
 const timelineDragMoved = ref(false);
+
+// 用來在載入完成後把「最左邊 in-progress 的 section」置中
+const timelineRefs = ref<Record<string, HTMLElement | null>>({});
+function registerTimelineRef(projectGid: string) {
+  return (el: any) => {
+    timelineRefs.value[projectGid] = el as HTMLElement | null;
+  };
+}
+
+function scrollTimelineToLeftMostInProgressCenter(projectGid: string) {
+  const el = timelineRefs.value[projectGid];
+  if (!el) return;
+  if (isDraggingTimeline.value) return;
+
+  const blocks = Array.from(
+    el.querySelectorAll<HTMLElement>(".section-block")
+  );
+  const targetBlock = blocks.find((b) => b.dataset.status === "in-progress");
+  if (!targetBlock) return;
+
+  const targetLeft =
+    targetBlock.offsetLeft -
+    (el.clientWidth - targetBlock.clientWidth) / 2;
+  const maxLeft = el.scrollWidth - el.clientWidth;
+  el.scrollLeft = Math.max(0, Math.min(targetLeft, maxLeft));
+}
 
 function onTimelineMouseDown(event: MouseEvent) {
   const el = event.currentTarget as HTMLElement | null;
@@ -450,6 +476,11 @@ async function loadProgress() {
             sections: sectionProgressList,
             loadingTasks: false,
           };
+          // 任務載入完成後，將「最左邊 in-progress 的 section」置中顯示
+          nextTick(() => {
+            if (thisLoadId !== loadIdRef.value) return;
+            scrollTimelineToLeftMostInProgressCenter(project.gid);
+          });
         } catch (e) {
           console.error("載入專案 section 任務失敗", e);
         }
@@ -673,6 +704,7 @@ onMounted(() => {
           <div
             class="project-timeline"
             :class="{ dragging: isDraggingTimeline }"
+            :ref="registerTimelineRef(item.project.gid)"
             @mousedown.prevent="onTimelineMouseDown"
             @mousemove.prevent="onTimelineMouseMove"
             @mouseup="onTimelineMouseUp"
@@ -688,6 +720,7 @@ onMounted(() => {
               v-for="sp in item.sections"
               :key="sp.section.gid"
               class="section-block"
+              :data-status="sp.status"
               @click="onSectionClick(item.project, sp)"
             >
               <div class="section-header">
