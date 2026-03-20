@@ -838,12 +838,13 @@ onMounted(() => {
   color: #111827;
 }
 .project-billing-coins {
-  margin-top: 4px;
+  margin-top: 2px;
   display: flex;
-  gap: 2px;
+  gap: 1px;
 }
 .project-billing-coins .coin {
   font-size: 18px;
+  line-height: 1;
   opacity: 0.25;
 }
 .project-billing-coins .coin.filled {
