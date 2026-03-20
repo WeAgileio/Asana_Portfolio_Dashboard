@@ -8,14 +8,14 @@ alwaysApply: true
 
 ## Git 提交流程規則
 
-在這個專案中，**只要需要你協助執行 git 提交（本地或遠端）時，操作順序必須嚴格遵守：**
+在這個專案中，**只要需要你協助執行任何會影響遠端狀態的 git 操作（包含 `commit`、`tag`、以及 `push`/`push --tags` 推送）時，操作順序必須嚴格遵守：**
 
 1. `git pull`：先從遠端拉取最新變更，處理衝突後再繼續。
 2. `git commit`：使用符合本檔案規則的 Conventional Commit 訊息建立提交。
 3. `git push`：最後才把本地提交推送到遠端。
 
 - 若使用者已經手動完成其中部分步驟（例如先自己 pull），你可以跳過已完成的步驟，  
-  但 **絕對不得在未 pull 的情況下直接進行 `commit → push`**。
+ 但 **絕對不得在未 pull 的情況下直接進行 `commit → push` 或 `tag → push tag`**。
 - 在實際執行任何 git 指令前，**必須先用自然語言向使用者說明你打算執行的步驟與指令，並等待使用者確認後再執行**。
 
 ---
@@ -179,5 +179,6 @@ feat: 新增了新功能（description 勿用大寫開頭、勿用過去式）
   - 本次版本的簡短說明（例如：新增了哪些主要功能或修正了哪些問題）
   - 若有破壞性修改，需在這裡特別標註
 - 若 `README.md` 尚未有 Release 區塊，先幫使用者在 README 底部加上一個簡單的「Release Notes」章節，然後再加入這次版本的說明。
+- 在建立/推送 tag 及建立 GitHub Release 前，先確認（或補齊）上述 `README.md` 的 Release Notes
 - 在幫忙產生 release 描述或 changelog 時，**優先復用或同步到 `README.md` 的 Release Notes**，避免兩邊內容不一致。
 
