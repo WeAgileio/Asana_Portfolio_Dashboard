@@ -115,6 +115,70 @@ function projectBillingFilledCoins(p: ProjectProgress): number {
   return Math.max(0, Math.min(10, Math.round(rate / 10)));
 }
 
+type ProjectYearBillingLine = {
+  key: string;
+  /** 年份（例如 2026），沒有 due_on 則為 '-' */
+  label: string;
+  collected: number;
+  total: number;
+  isCurrentYear: boolean;
+};
+
+function projectBillingYearLines(p: ProjectProgress): ProjectYearBillingLine[] {
+  const currentYear = new Date().getFullYear();
+  const byYear = new Map<number, { collected: number; total: number }>();
+  let noDue = { collected: 0, total: 0 };
+
+  for (const s of p.sections) {
+    for (const t of s.tasks) {
+      const amountTotal = typeof t.billingAmount === "number" ? t.billingAmount : 0;
+      const amountCollected =
+        t.completed && typeof t.billingAmount === "number" ? t.billingAmount : 0;
+
+      if (amountTotal === 0 && amountCollected === 0) continue;
+
+      const dueStr = typeof t.due_on === "string" ? t.due_on : "";
+      if (dueStr) {
+        const dt = new Date(dueStr);
+        const y = dt.getFullYear();
+        if (!Number.isNaN(y)) {
+          const cur = byYear.get(y) ?? { collected: 0, total: 0 };
+          byYear.set(y, {
+            collected: cur.collected + amountCollected,
+            total: cur.total + amountTotal,
+          });
+          continue;
+        }
+      }
+
+      noDue.total += amountTotal;
+      noDue.collected += amountCollected;
+    }
+  }
+
+  const yearEntries: ProjectYearBillingLine[] = Array.from(byYear.entries())
+    .sort((a, b) => a[0] - b[0]) // 小的在上，大的在下
+    .map(([year, v]) => ({
+      key: String(year),
+      label: String(year),
+      collected: v.collected,
+      total: v.total,
+      isCurrentYear: year === currentYear,
+    }));
+
+  if (noDue.total > 0 || noDue.collected > 0) {
+    yearEntries.push({
+      key: "no-due",
+      label: "-",
+      collected: noDue.collected,
+      total: noDue.total,
+      isCurrentYear: false,
+    });
+  }
+
+  return yearEntries;
+}
+
 const projectsOptions = ref<AsanaProject[]>([]);
 const projectsOptionsLoading = ref(false);
 
@@ -536,21 +600,74 @@ onMounted(() => {
               <span class="project-name-label">
                 {{ item.project.name }}
               </span>
-              <span
-                v-if="projectBillingTotal(item) > 0"
-                class="project-billing-total"
+              <div
+                v-if="!item.loadingTasks && projectBillingTotal(item) > 0"
+                class="project-billing-years"
               >
-                {{ projectBillingCollectedTotal(item).toLocaleString("zh-TW") }}/{{ projectBillingTotal(item).toLocaleString("zh-TW") }}
-                <div class="project-billing-coins">
+                <div
+                  v-for="line in projectBillingYearLines(item)"
+                  :key="line.key"
+                  class="project-year-line"
+                  :class="{ 'project-year-line-current': line.isCurrentYear }"
+                >
                   <span
-                    v-for="n in 10"
-                    :key="n"
-                    :class="['coin', { filled: n <= projectBillingFilledCoins(item) }]"
+                    class="project-year-label"
+                    :class="{ 'project-year-label-current': line.isCurrentYear }"
                   >
-                    💰
+                    {{ line.label }}
+                  </span>
+                  <span
+                    class="project-year-amount"
+                    :class="{ 'project-year-amount-current': line.isCurrentYear }"
+                  >
+                    <span class="project-year-amount-collected">
+                      {{ line.collected.toLocaleString("zh-TW") }}
+                    </span>
+                    <span class="project-year-amount-slash">/</span>
+                    <span class="project-year-amount-total">
+                      {{ line.total.toLocaleString("zh-TW") }}
+                    </span>
                   </span>
                 </div>
-              </span>
+              </div>
+
+              <div
+                v-if="!item.loadingTasks && projectBillingTotal(item) > 0"
+                class="project-total-divider"
+              />
+
+              <div
+                v-if="!item.loadingTasks && projectBillingTotal(item) > 0"
+                class="project-total-row"
+              >
+                <span class="project-total-pill">Total</span>
+                <span class="project-total-amount">
+                  <span class="project-year-amount-collected">
+                    {{
+                      projectBillingCollectedTotal(item).toLocaleString("zh-TW")
+                    }}
+                  </span>
+                  <span class="project-year-amount-slash">/</span>
+                  <span class="project-year-amount-total">
+                    {{
+                      projectBillingTotal(item).toLocaleString("zh-TW")
+                    }}
+                  </span>
+                </span>
+              </div>
+
+              <div
+                v-if="projectBillingTotal(item) > 0"
+                class="project-billing-coins"
+              >
+                <span
+                  v-for="n in 10"
+                  :key="n"
+                  :class="['coin', { filled: n <= projectBillingFilledCoins(item) }]"
+                >
+                  💰
+                </span>
+              </div>
             </div>
           </div>
           <div
@@ -809,8 +926,8 @@ onMounted(() => {
 }
 .project-row {
   display: grid;
-  grid-template-columns: 180px minmax(0, 1fr);
-  gap: 16px;
+  grid-template-columns: 240px minmax(0, 1fr);
+  gap: 12px;
   align-items: center;
 }
 .project-name {
@@ -836,6 +953,104 @@ onMounted(() => {
   font-size: 14px;
   font-weight: 700;
   color: #111827;
+}
+
+.project-billing-years {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  margin-top: 2px;
+  width: 100%;
+}
+
+.project-year-line {
+  display: grid;
+  grid-template-columns: 62px 1fr;
+  align-items: center;
+  column-gap: 8px;
+  line-height: 1.25;
+}
+
+.project-year-line-current {
+  background: rgba(96, 165, 250, 0.18);
+  border-radius: 8px;
+  padding: 2px 8px;
+}
+
+.project-year-label {
+  color: #6b7280;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.project-year-label-current {
+  color: #60a5fa;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.project-year-amount {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  gap: 4px;
+  align-items: center;
+  color: #6b7280;
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.project-year-amount-current {
+  color: #111827;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.project-year-amount-collected,
+.project-year-amount-total {
+  text-align: right;
+}
+
+.project-year-amount-slash {
+  text-align: center;
+}
+
+.project-total-divider {
+  width: 100%;
+  height: 1px;
+  background: #e5e7eb;
+  margin: 2px 0 0;
+}
+
+.project-total-row {
+  display: grid;
+  grid-template-columns: 62px 1fr;
+  align-items: center;
+  column-gap: 8px;
+  width: 100%;
+  margin-top: 2px;
+}
+
+.project-total-pill {
+  color: #22c55e;
+  font-weight: 700;
+  font-size: 10px;
+  line-height: 1;
+  text-align: center;
+}
+
+.project-total-amount {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  gap: 4px;
+  align-items: center;
+  font-size: 13px;
+  font-weight: 700;
+  color: #111827;
+  white-space: nowrap;
 }
 .project-billing-coins {
   margin-top: 2px;
