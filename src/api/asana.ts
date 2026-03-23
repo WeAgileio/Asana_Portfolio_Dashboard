@@ -52,7 +52,7 @@ export async function fetchProjects(): Promise<AsanaProject[]> {
     do {
       const params: Record<string, string> = {
         workspace: ws.gid,
-        opt_fields: "gid,name,color,archived",
+        opt_fields: "gid,name,color,archived,created_at",
         limit: "100",
       };
       if (offset) params["offset"] = offset;
@@ -63,6 +63,7 @@ export async function fetchProjects(): Promise<AsanaProject[]> {
         name: p.name,
         color: p.color ?? null,
         archived: !!p.archived,
+        created_at: p.created_at ?? null,
       }));
       for (const p of page) {
         byGid.set(p.gid, p);
@@ -73,13 +74,23 @@ export async function fetchProjects(): Promise<AsanaProject[]> {
 
   // 僅保留未封存專案
   const all = Array.from(byGid.values()).filter((p) => !p.archived);
-  all.sort((a, b) => a.name.localeCompare(b.name, "zh-TW"));
+  /** 建立時間新→舊；無建立時間的排在最後，同時間再依名稱 */
+  function projectCreatedMs(p: AsanaProject): number {
+    if (!p.created_at) return 0;
+    const t = new Date(p.created_at).getTime();
+    return Number.isFinite(t) ? t : 0;
+  }
+  all.sort((a, b) => {
+    const diff = projectCreatedMs(b) - projectCreatedMs(a);
+    if (diff !== 0) return diff;
+    return a.name.localeCompare(b.name, "zh-TW");
+  });
   return all;
 }
 
 export async function fetchProject(projectGid: string): Promise<AsanaProject> {
   const res = await api.get(`/projects/${projectGid}`, {
-    params: { opt_fields: "gid,name,color,archived" },
+    params: { opt_fields: "gid,name,color,archived,created_at" },
   });
   const p = res.data.data;
   return {
@@ -87,6 +98,7 @@ export async function fetchProject(projectGid: string): Promise<AsanaProject> {
     name: p.name,
     color: p.color ?? null,
     archived: !!p.archived,
+    created_at: p.created_at ?? null,
   };
 }
 

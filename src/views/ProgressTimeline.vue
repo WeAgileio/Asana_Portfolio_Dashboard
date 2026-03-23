@@ -51,7 +51,7 @@ const dragScrollLeft = ref(0);
 const activeTimelineEl = ref<HTMLElement | null>(null);
 const timelineDragMoved = ref(false);
 
-// 用來在載入完成後把「最左邊 in-progress 的 section」置中
+// 用來在載入完成後把「時間軸上最後一個已完成（done）的 section」置中
 const timelineRefs = ref<Record<string, HTMLElement | null>>({});
 function registerTimelineRef(projectGid: string) {
   return (el: any) => {
@@ -59,7 +59,7 @@ function registerTimelineRef(projectGid: string) {
   };
 }
 
-function scrollTimelineToLeftMostInProgressCenter(projectGid: string) {
+function scrollTimelineToLastDoneSectionCenter(projectGid: string) {
   const el = timelineRefs.value[projectGid];
   if (!el) return;
   if (isDraggingTimeline.value) return;
@@ -67,7 +67,13 @@ function scrollTimelineToLeftMostInProgressCenter(projectGid: string) {
   const blocks = Array.from(
     el.querySelectorAll<HTMLElement>(".section-block")
   );
-  const targetBlock = blocks.find((b) => b.dataset.status === "in-progress");
+  let targetBlock: HTMLElement | undefined;
+  for (let i = blocks.length - 1; i >= 0; i--) {
+    if (blocks[i]!.dataset.status === "done") {
+      targetBlock = blocks[i];
+      break;
+    }
+  }
   if (!targetBlock) return;
 
   const targetLeft =
@@ -476,10 +482,10 @@ async function loadProgress() {
             sections: sectionProgressList,
             loadingTasks: false,
           };
-          // 任務載入完成後，將「最左邊 in-progress 的 section」置中顯示
+          // 任務載入完成後，將「最後一個已完成的 section」置中顯示
           nextTick(() => {
             if (thisLoadId !== loadIdRef.value) return;
-            scrollTimelineToLeftMostInProgressCenter(project.gid);
+            scrollTimelineToLastDoneSectionCenter(project.gid);
           });
         } catch (e) {
           console.error("載入專案 section 任務失敗", e);

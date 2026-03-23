@@ -4,6 +4,8 @@ export interface AsanaProject {
   color: string | null;
   /** 是否已封存（archived），封存專案在列表中會被過濾掉 */
   archived?: boolean;
+  /** ISO 建立時間，用於專案清單排序 */
+  created_at?: string | null;
 }
 
 export interface AsanaSection {
