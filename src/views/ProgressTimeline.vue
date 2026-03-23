@@ -409,7 +409,6 @@ function calcSectionProgress(
 async function loadProgress() {
   loading.value = true;
   error.value = null;
-  items.value = [];
   loadIdRef.value += 1;
   const thisLoadId = loadIdRef.value;
 
@@ -440,7 +439,7 @@ async function loadProgress() {
       isFirstLoad.value = false;
     }
 
-    // 第一步：併發取得所有專案的 sections，再把專案與 section 框一次性全部渲染
+    // 第一步：併發取得所有專案的 sections，保留既有資料避免整頁清空閃爍
     const projectSectionList = await Promise.all(
       projectsToLoad.map(async (project) => {
         const sections = await fetchSectionsByProject(project.gid);
@@ -448,19 +447,27 @@ async function loadProgress() {
       })
     );
 
-    for (const { project, sections } of projectSectionList) {
-      const placeholderSections: SectionProgress[] = sections.map((section) =>
-        calcSectionProgress(section, [])
+    const existingByProjectGid = new Map(
+      items.value.map((item) => [item.project.gid, item] as const)
+    );
+    items.value = projectSectionList.map(({ project, sections }) => {
+      const existingItem = existingByProjectGid.get(project.gid);
+      const existingSectionByGid = new Map(
+        (existingItem?.sections ?? []).map((sp) => [sp.section.gid, sp] as const)
       );
-      items.value.push({
+      const mergedSections: SectionProgress[] = sections.map(
+        (section) =>
+          existingSectionByGid.get(section.gid) ?? calcSectionProgress(section, [])
+      );
+      return {
         project,
-        sections: placeholderSections,
+        sections: mergedSections,
         loadingTasks: true,
-      });
-    }
+      };
+    });
 
-    // 第二步：併發載入各專案的任務，各自完成時更新對應的 item（不再一個專案全載完才處理下一個）
-    projectSectionList.forEach(({ project, sections }, index) => {
+    // 第二步：併發載入各專案的任務，各自完成時只更新該專案
+    projectSectionList.forEach(({ project, sections }) => {
       (async () => {
         try {
           const sectionProgressListRaw = await Promise.all(
@@ -475,9 +482,11 @@ async function loadProgress() {
           const sectionProgressList = sectionProgressListRaw.filter(
             (x): x is SectionProgress => x !== null
           );
-          // 若使用者已重新載入，此回調屬於舊的 load，不再寫入避免錯位或 undefined
+          // 若使用者已重新載入，此回調屬於舊的 load，不再寫入
           if (thisLoadId !== loadIdRef.value) return;
-          items.value[index] = {
+          const idx = items.value.findIndex((x) => x.project.gid === project.gid);
+          if (idx < 0) return;
+          items.value[idx] = {
             project,
             sections: sectionProgressList,
             loadingTasks: false,
@@ -494,6 +503,7 @@ async function loadProgress() {
     });
 
     if (projectsToLoad.length === 0) {
+      items.value = [];
       error.value = "目前選擇的專案沒有可載入的資料（可能已被封存或權限不足）。";
     }
   } catch (e) {
@@ -707,28 +717,23 @@ onMounted(() => {
               </div>
             </div>
           </div>
-          <div
-            class="project-timeline"
-            :class="{ dragging: isDraggingTimeline }"
-            :ref="registerTimelineRef(item.project.gid)"
-            @mousedown.prevent="onTimelineMouseDown"
-            @mousemove.prevent="onTimelineMouseMove"
-            @mouseup="onTimelineMouseUp"
-            @mouseleave="onTimelineMouseUp"
-          >
+          <div class="project-timeline-wrap">
             <div
-              v-if="item.loadingTasks"
-              class="timeline-loading-overlay"
+              class="project-timeline"
+              :class="{ dragging: isDraggingTimeline }"
+              :ref="registerTimelineRef(item.project.gid)"
+              @mousedown.prevent="onTimelineMouseDown"
+              @mousemove.prevent="onTimelineMouseMove"
+              @mouseup="onTimelineMouseUp"
+              @mouseleave="onTimelineMouseUp"
             >
-              <span class="timeline-loading-text">任務載入中…</span>
-            </div>
-            <div
-              v-for="sp in item.sections"
-              :key="sp.section.gid"
-              class="section-block"
-              :data-status="sp.status"
-              @click="onSectionClick(item.project, sp)"
-            >
+              <div
+                v-for="sp in item.sections"
+                :key="sp.section.gid"
+                class="section-block"
+                :data-status="sp.status"
+                @click="onSectionClick(item.project, sp)"
+              >
               <div class="section-header">
                 <span class="section-name">
                   {{ sp.section.name }}
@@ -776,6 +781,13 @@ onMounted(() => {
                   任務：{{ sp.completedTasks }}/{{ sp.totalTasks }}
                 </span>
               </div>
+              </div>
+            </div>
+            <div
+              v-if="item.loadingTasks"
+              class="timeline-loading-overlay"
+            >
+              <span class="timeline-loading-text">任務載入中…</span>
             </div>
           </div>
         </article>
@@ -1215,7 +1227,6 @@ onMounted(() => {
   cursor: not-allowed;
 }
 .project-timeline {
-  position: relative;
   background: #ffffff;
   border-radius: 12px;
   border: 1px solid #e5e7eb;
@@ -1225,6 +1236,10 @@ onMounted(() => {
   gap: 8px;
   overflow-x: auto;
   cursor: grab;
+}
+.project-timeline-wrap {
+  position: relative;
+  min-width: 0;
 }
 .project-timeline.dragging {
   cursor: grabbing;
