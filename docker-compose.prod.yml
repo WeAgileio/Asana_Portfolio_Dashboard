@@ -1,0 +1,41 @@
+# 正式環境：單一容器（映像內已含建置好的前端 + Node API），對外埠見下方 ports。
+#
+# ── 為什麼只寫 image、不要 Dockerfile？ ──
+# `image` 只是「要用哪一個映像」；若同時寫 `build:`，Compose 會在**本機從 Dockerfile
+# 建置**再打上該 image 名稱，所以仍需要 Dockerfile 與完整原始碼。
+# NAS 上通常只要**拉 Registry 上已建好的映像**，請維持**只有 image、不要 build**，
+# 這樣部署目錄裡不需要 Dockerfile。
+#
+# 啟動（會依 image 名稱自動 pull，若本機尚無）：
+#   docker compose -f docker-compose.prod.yml pull
+#   docker compose -f docker-compose.prod.yml up -d
+#
+# ── pull access denied / repository does not exist ──
+# 1) 私有倉庫：在該主機執行 docker login（群暉 Container Manager 內建登入 Docker Hub）。
+# 2) 映像尚未 push：請先在開發機 docker build && docker push，或暫時改回 build: 在本機建置。
+# 3) 名稱不對：把下方 image 改成「你的 Docker Hub 使用者名/倉庫名:標籤」，或在同目錄 .env 設定
+#    DASHBOARD_IMAGE=你的帳號/你的倉庫:標籤（會覆寫預設）。
+#
+# 若要固定寫死特定版本，可直接改 image 行，例如：
+#   image: yuminggood/asana_dashboard:v0.2.2
+#
+# ── 若要在有原始碼的機器上「本地建置」映像（開發/CI），可暫時加上 build： ──
+#   build:
+#     context: .
+#     dockerfile: Dockerfile
+# （與 image 並存時：`up --build` 會建置並以 image 名稱標記。）
+#
+# 環境變數：與本檔同目錄的 .env 會被 Compose 自動讀取，用於 ${VAR} 替換。
+# 沒有 .env 時變數為空，也可只在 Container Manager 裡手動加環境變數。
+
+services:
+  app:
+    # 可於同目錄 .env 設定 DASHBOARD_IMAGE 覆寫（方便換帳號/私有庫/其它 Registry）
+    image: ${DASHBOARD_IMAGE:-yuminggood/asana_dashboard:latest}
+    ports:
+      - "3001:3001"
+    environment:
+      NODE_ENV: production
+      PORT: ${PORT:-3001}
+      VITE_BILLING_FIELD_NAME: ${VITE_BILLING_FIELD_NAME:-請款金額}
+    restart: unless-stopped

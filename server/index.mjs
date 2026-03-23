@@ -2,6 +2,11 @@ import express from "express";
 import axios from "axios";
 import dotenv from "dotenv";
 import cookieSession from "cookie-session";
+import { existsSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
 
 dotenv.config();
 
@@ -175,11 +180,29 @@ app.get("/api/*", requireAuth, async (req, res) => {
   }
 });
 
+// ───────────────── 生產環境：提供 Vite 建置後的靜態檔 ─────────────────
+const distPath = join(__dirname, "..", "dist");
+if (existsSync(distPath)) {
+  app.use(express.static(distPath));
+  app.get("*", (req, res, next) => {
+    if (req.path.startsWith("/api") || req.path.startsWith("/auth")) {
+      return next();
+    }
+    if (req.method !== "GET") {
+      return next();
+    }
+    res.sendFile(join(distPath, "index.html"), (err) => {
+      if (err) next(err);
+    });
+  });
+}
+
 const PORT = process.env.PORT || 3001;
 
 app.listen(PORT, () => {
-  console.log(
-    `[asana-oauth] 後端已啟動，監聽埠 ${PORT}。開發時請同時執行：npm run dev（前端）與 npm run server（後端）。`
-  );
+  const modeHint = existsSync(distPath)
+    ? "（已載入 dist/，單一服務提供前端與 API）"
+    : "開發時請同時執行：npm run dev（前端）與 npm run server（後端）。";
+  console.log(`[asana-oauth] 後端已啟動，監聽埠 ${PORT}。${modeHint}`);
 });
 

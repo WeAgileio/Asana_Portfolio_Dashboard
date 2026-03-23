@@ -1,11 +1,27 @@
-FROM node:20-alpine
+# 生產映像：建置 Vue 前端 + 以 Node 提供 API 與靜態檔
+# 建置：docker build -t yuminggood/asana_dashboard:<tag> .
+# 執行：docker run -p 3001:3001 --env-file .env yuminggood/asana_dashboard:<tag>
 
+FROM node:20-alpine AS builder
 WORKDIR /app
 
-# 安裝依賴
 COPY package.json package-lock.json* ./
-RUN npm install
+RUN npm ci
 
-# 預設指令會在 docker-compose 中覆蓋
-CMD ["npm", "run", "dev"]
+COPY . .
+RUN npm run build
 
+FROM node:20-alpine AS runner
+WORKDIR /app
+
+ENV NODE_ENV=production
+
+COPY package.json package-lock.json* ./
+RUN npm ci --omit=dev
+
+COPY --from=builder /app/dist ./dist
+COPY server ./server
+
+EXPOSE 3001
+
+CMD ["node", "server/index.mjs"]

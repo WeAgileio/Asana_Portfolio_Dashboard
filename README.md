@@ -101,23 +101,77 @@ npm run server
 
 開啟瀏覽器到 `http://localhost:5173` 即可。
 
-### 4. 使用 Docker 啟動（選用）
+### 4. 使用 Docker 啟動（本機開發，選用）
 
-專案已提供簡單的 Docker 設定：
+專案提供：
 
-- `Dockerfile`
-- `docker-compose.yml`
+- `Dockerfile.dev`：開發用基底映像（與下方 compose 搭配）
+- `docker-compose.yml`：前後端分開跑 Vite dev + Express
 
-在專案根目錄執行（說明用，不會自動幫你執行）：
+在專案根目錄執行：
 
 ```bash
-docker-compose up --build
+docker compose up --build
 ```
 
 會啟動：
 
 - `backend` 容器：埠號 `3001`，執行 `npm run server`
 - `frontend` 容器：埠號 `5173`，執行 `npm run dev -- --host 0.0.0.0`
+
+### 5. 建置生產映像並推送到 Docker Hub
+
+根目錄的 **`Dockerfile`** 用於 **`docker build` / CI** 建置生產映像並推送 Registry。**`docker-compose.prod.yml`** 預設**只寫 `image`**（從 Docker Hub 拉已建好的映像），NAS 上**不需要**放 `Dockerfile`；若要在本機從原始碼建置，可暫時在該 compose 內加上 `build:`（見檔案頂部註解）。
+
+1. 登入 Docker Hub（若尚未登入）：
+
+   ```bash
+   docker login
+   ```
+
+2. 建置並打上標籤（請將 `<tagname>` 換成版本，例如 `v0.2.2` 或 `latest`）：
+
+   ```bash
+   docker build -t yuminggood/asana_dashboard:<tagname> .
+   ```
+
+3. 推送到你的倉庫：
+
+   ```bash
+   docker push yuminggood/asana_dashboard:<tagname>
+   ```
+
+4. 執行容器（需帶入 Asana OAuth / Session 等環境變數，可參考 `.env.example`）：
+
+   ```bash
+   docker run -p 3001:3001 --env-file .env yuminggood/asana_dashboard:<tagname>
+   ```
+
+   瀏覽器開啟 `http://localhost:3001` 即可（前後端同一埠）。
+
+### 6. Docker Compose（正式環境）
+
+使用 **`docker-compose.prod.yml`**：單一服務 `app`，預設**只使用 `image:`** 從 Registry 拉取已建好的映像（**不需 Dockerfile**）；對外 **3001**（API + 前端靜態檔），並預設 `restart: unless-stopped`。
+
+1. **環境變數**：`docker-compose.prod.yml` 使用 `environment` + `${變數名}`，與 compose 檔**同目錄**的 `.env` 會由 Compose 自動讀取並代入（無需 `env_file` 區塊，相容群暉等只接受字串的舊版 Compose）。也可不建 `.env`，改在 Container Manager 內手動新增 `ASANA_CLIENT_ID`、`ASANA_CLIENT_SECRET`、`ASANA_REDIRECT_URI`、`SESSION_SECRET` 等。
+2. 拉取映像並背景啟動：
+
+   ```bash
+   docker compose -f docker-compose.prod.yml pull
+   docker compose -f docker-compose.prod.yml up -d
+   ```
+
+3. 瀏覽器開啟 `http://localhost:3001`（若主機埠有改，請對應修改 compose 內 `ports`）。
+
+預設映像為 `yuminggood/asana_dashboard:latest`；也可在與 compose 同目錄的 `.env` 設定 **`DASHBOARD_IMAGE=帳號/倉庫:標籤`** 覆寫，無須改 yaml。
+
+若 **`pull access denied` / `repository does not exist`**：
+
+1. **私有倉庫**：在 NAS / 主機先 **`docker login`**（群暉可在 Container Manager 登入 Docker Hub）。
+2. **還沒 push 過**：在開發機執行 `docker build -t 帳號/倉庫:標籤 .` 再 **`docker push`**，確認 Docker Hub 上能看到該倉庫。
+3. **倉庫名或帳號不對**：把 `image`（或 `DASHBOARD_IMAGE`）改成你 Hub 上**實際存在**的 `使用者名/映像名:標籤`。
+
+**若同時加上 `build:`**，`up --build` 才會在**本機**用 Dockerfile 建置並打上該 `image` 名稱（適合開發機或 CI，NAS 上通常不需要）。
 
 ## 專案結構（節錄）
 
