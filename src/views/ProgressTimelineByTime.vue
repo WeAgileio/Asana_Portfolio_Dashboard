@@ -1,5 +1,12 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onActivated, onUnmounted } from "vue";
+import {
+  ref,
+  computed,
+  watch,
+  onMounted,
+  onActivated,
+  onUnmounted,
+} from "vue";
 import type { AsanaProject } from "@/types/asana";
 import {
   useProjectProgress,
@@ -27,6 +34,13 @@ const {
   bootstrapFromStorage,
   syncSelectionFromStorage,
 } = useProjectProgress();
+
+/** 任務載入中或專案進度重載中時禁止橫向拖曳捲動 */
+const bytimeDragScrollDisabled = computed(
+  () =>
+    loading.value ||
+    displayItems.value.some((item: ProjectProgress) => item.loadingTasks)
+);
 
 const isDraggingBytimeScroll = ref(false);
 const bytimeDragStartX = ref(0);
@@ -94,6 +108,7 @@ function onBytimeTableDocumentUp() {
 }
 
 function onBytimeScrollMouseDown(event: MouseEvent) {
+  if (bytimeDragScrollDisabled.value) return;
   if (event.button !== 0) return;
   const t = event.target as HTMLElement | null;
   if (!t) return;
@@ -111,6 +126,10 @@ function onBytimeScrollMouseDown(event: MouseEvent) {
   document.addEventListener("mousemove", onBytimeTableDocumentMove);
   document.addEventListener("mouseup", onBytimeTableDocumentUp);
 }
+
+watch(bytimeDragScrollDisabled, (blocked) => {
+  if (blocked) endBytimeTableDrag();
+});
 
 onUnmounted(() => {
   endBytimeTableDrag();
@@ -462,7 +481,10 @@ onActivated(() => {
           <div
             ref="bytimeHeadScrollEl"
             class="bytime-thead-scroll"
-            :class="{ 'bytime-table-scroll--dragging': isDraggingBytimeScroll }"
+            :class="{
+              'bytime-table-scroll--dragging': isDraggingBytimeScroll,
+              'bytime-scroll--drag-disabled': bytimeDragScrollDisabled,
+            }"
             @scroll.passive="onBytimeHeadScroll"
             @mousedown="onBytimeScrollMouseDown"
           >
@@ -530,7 +552,10 @@ onActivated(() => {
         <div
           ref="bytimeBodyScrollEl"
           class="bytime-table-scroll bytime-body-scroll"
-          :class="{ 'bytime-table-scroll--dragging': isDraggingBytimeScroll }"
+          :class="{
+            'bytime-table-scroll--dragging': isDraggingBytimeScroll,
+            'bytime-scroll--drag-disabled': bytimeDragScrollDisabled,
+          }"
           @scroll.passive="onBytimeBodyScroll"
           @mousedown="onBytimeScrollMouseDown"
         >
@@ -973,6 +998,10 @@ onActivated(() => {
   -webkit-overflow-scrolling: touch;
   cursor: grab;
   scrollbar-width: none;
+}
+.bytime-thead-scroll.bytime-scroll--drag-disabled,
+.bytime-table-scroll.bytime-scroll--drag-disabled {
+  cursor: default;
 }
 .bytime-thead-scroll::-webkit-scrollbar {
   display: none;
