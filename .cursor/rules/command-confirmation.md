@@ -11,7 +11,7 @@ alwaysApply: true
 在這個專案中，**只要需要你協助執行任何會影響遠端狀態的 git 操作（包含 `commit`、`tag`、以及 `push`/`push --tags` 推送）時，操作順序必須嚴格遵守：**
 
 1. `git pull`：先從遠端拉取最新變更，處理衝突後再繼續。
-2. `git commit`：使用符合本檔案規則的 Conventional Commit 訊息建立提交。
+2. `git commit`：使用符合本檔案規則的 Commits 規範建立提交。
 3. `git push`：最後才把本地提交推送到遠端。
 
 - 若使用者已經手動完成其中部分步驟（例如先自己 pull），你可以跳過已完成的步驟，  
