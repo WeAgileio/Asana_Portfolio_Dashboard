@@ -211,9 +211,14 @@ function ensureProgressCoreWatchers() {
   progressCoreWatchersReady = true;
   const auth = useAuthStore();
 
-  watch(selectedProjectGids, () => {
-    persistSelectedToLocalStorage();
-  });
+  watch(
+    selectedProjectGids,
+    () => {
+      // checkbox v-model 會對陣列做原地變更，需 deep watch 才能穩定持久化選擇
+      persistSelectedToLocalStorage();
+    },
+    { deep: true }
+  );
 
   watch(
     () => auth.getTokenHash(),
