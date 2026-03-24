@@ -114,30 +114,34 @@ export async function fetchSectionsByProject(
   }));
 }
 
-/** 環境變數中的欄位名稱（可逗號分隔多個）；空字串則僅用預設候選名稱 */
-const BILLING_FIELD_NAME_ENV =
+/**
+ * 單一環境變數：請款自訂欄位，逗號／中文逗號分隔多個。
+ * 每段若為純數字則視為欄位 GID，否則視為欄位名稱；比對時 GID 優先於名稱。
+ * 未設定時僅用預設名稱候選（請款金額、請款額）。
+ */
+const BILLING_FIELD_ENV_RAW =
   typeof import.meta !== "undefined"
-    ? String((import.meta as any).env?.VITE_BILLING_FIELD_NAME ?? "").trim()
-    : "";
-
-/** 選用：自訂欄位 gid，逗號分隔；有設定時優先於名稱比對 */
-const BILLING_FIELD_GID_ENV =
-  typeof import.meta !== "undefined"
-    ? String((import.meta as any).env?.VITE_BILLING_FIELD_GID ?? "").trim()
+    ? String((import.meta as any).env?.VITE_BILLING_FIELD ?? "").trim()
     : "";
 
 const DEFAULT_BILLING_FIELD_NAMES = ["請款金額", "請款額"];
 
-function billingNamesToMatch(): string[] {
-  const fromEnv = BILLING_FIELD_NAME_ENV.split(/[，,]/)
-    .map((s) => s.trim())
-    .filter(Boolean);
-  return [...new Set([...fromEnv, ...DEFAULT_BILLING_FIELD_NAMES])];
+function parseBillingFieldEnv(raw: string): { gids: string[]; names: string[] } {
+  const gids: string[] = [];
+  const names: string[] = [];
+  for (const part of raw.split(/[，,]/).map((s) => s.trim()).filter(Boolean)) {
+    if (/^\d+$/.test(part)) gids.push(part);
+    else names.push(part);
+  }
+  return { gids, names };
 }
 
-const BILLING_FIELD_GIDS = BILLING_FIELD_GID_ENV.split(/[，,]/)
-  .map((s) => s.trim())
-  .filter(Boolean);
+const { gids: BILLING_FIELD_GIDS, names: BILLING_NAMES_FROM_ENV } =
+  parseBillingFieldEnv(BILLING_FIELD_ENV_RAW);
+
+function billingNamesToMatch(): string[] {
+  return [...new Set([...BILLING_NAMES_FROM_ENV, ...DEFAULT_BILLING_FIELD_NAMES])];
+}
 
 function normalizeCfName(name: string): string {
   return name.trim().replace(/\s+/g, " ");

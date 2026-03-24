@@ -1,66 +1,51 @@
-## 專案簡介
+# Asana 儀表板
 
-這是一個使用 **Vue 3 + TypeScript + Pinia + Vite** 建立的 Asana 儀表板專案，  
-後端則使用 **Node.js + Express** 做 OAuth2 / PAT 驗證與 Asana API Proxy。
+以 **Vue 3 + TypeScript + Pinia + Vite** 建置的前端，搭配 **Node.js + Express** 後端處理 Asana OAuth／權杖與 API Proxy。登入後可在同一套介面檢視 **十週任務更新統計**、**專案進度（橫向時間軸）** 與 **進度·時間序（月欄表）**。
 
-目標是幫你在瀏覽器裡快速掌握多個專案的：
+## 技術棧
 
-- 專案整體完成度、各 Section 完成度（任務數 / 工作天數）
-- 各專案、各週的「任務更新」情況（本週、最近十週趨勢）
-- 新增的「專案進度」時間軸視圖，查看每個專案的階段進度與里程碑
+| 層級 | 說明 |
+|------|------|
+| 前端 | Vue 3、TypeScript、Vite 6、Pinia、Axios |
+| 後端 | Express、`cookie-session`、Asana REST API |
+| 容器 | 多階段 `Dockerfile`（建置前端靜態檔 + 生產用 Node 服務） |
 
-## 主要功能
+## 主要功能（登入後）
 
-### 1. 專案概況（Dashboard）
+### 十週更新統計
 
-- 顯示當前選定專案的：
-  - 總任務數 / 已完成任務數 / 逾期任務數
-  - 依 Section 統計完成率（任務數 + 工作天數兩種視角）
-  - Section 完成度排名列表
-- 可以使用 Asana OAuth 或個人權杖登入，並透過下拉選單選擇要看的專案。
+- 以卡片呈現最近 **10 週**的任務更新量與依「更新人」統計。
+- 點選週別可開啟該週任務清單，並可依更新人篩選。
+- 分頁切換時會快取資料，僅在按下「重新載入」時再向後端請求。
 
-### 2. 本週任務更新
+### 專案進度（橫向時間軸）
 
-- 汇總「本週內有更新」的所有任務（跨專案）。
-- 顯示：
-  - 任務名稱（可點擊直達 Asana）
-  - 所屬專案 / Section
-  - 受指派人
-  - 最後更新時間與更新人（透過 stories 推算）
+- 每列一個 Asana **專案**；左側為專案名稱與（可選）**請款／金額**摘要；右側為該專案各 **Section** 橫向排列。
+- 各 Section 顯示名稱、里程碑截止日、完成率、狀態色（尚未開始／進行中／已完成／落後／風險）、請款加總等。
+- 可 **選擇專案**（多選篩選），設定存於 `localStorage`。
+- 支援 **滑鼠拖曳** 橫向捲動；拖曳時不會誤開任務詳情。
+- 載入任務時於該列顯示遮罩；完成後可將視野對準最近完成的 Section（邏輯見程式）。
+- 點 Section 可開啟任務清單（含里程碑標示、截止日等）。
 
-### 3. 十週更新統計
+### 進度·時間序（月欄表）
 
-- 以卡片方式顯示最近十週的「任務更新數統計」：
-  - 每週總更新次數
-  - 各「更新人」的更新次數統計
-- 點擊某一週的卡片，會在畫面中央彈出該週所有更新任務清單（與「本週任務更新」版型一致），可進一步檢視細節。
+- 與「專案進度」共用 **`useProjectProgress`** 資料與載入流程。
+- 以 **年／月** 為欄，依 Section 的 **里程碑最晚截止日** 對齊月份；無法對應者集中在 **未排** 欄（可折疊以省寬度）。
+- **表頭**（年／月與左側欄）在頁面捲動時 **固定於視窗頂端**；表頭與表身為雙層橫向捲動並 **同步 `scrollLeft`**。
+- 同一格內多個 Section **直向堆疊**；卡片上顯示截止日、請款、完成度等。
+- **任務載入中**或整體 **重新載入** 時 **禁止橫向拖曳**，避免與載入狀態衝突。
 
-### 4. 專案進度（時間軸視圖）
+### 登入
 
-- 每列是一個 Asana 專案，左側顯示專案名稱，右側橫向排列該專案的所有 Section：
-  - 每個 Section 顯示：
-    - Section 名稱
-    - 里程碑任務中「最晚的截止日」
-    - 任務完成率（依任務數計算）
-    - 依完成度展示不同顏色進度條：
-      - 灰色：尚未開始（無任務或全部未完成）
-      - 藍色：進行中（部分完成）
-      - 綠色：已完成（全部完成）
-  - 若 Section 沒有任何任務且名稱是「未命名區段」，則不會顯示。
-- 點擊任一 Section，會跳出任務清單彈窗：
-  - 列出該 Section 底下所有任務、指派人、最後更新時間與完成狀態
-  - 若任務是里程碑，整列會以粉紅底色 +「里程碑」標籤醒目標示。
-- 上方可透過「選擇專案」開啟設定彈窗，勾選要載入的專案，選擇結果會儲存在 `localStorage`，下次開啟會自動沿用。
-- 載入流程分兩階段：
-  1. 先載入專案與 Section 結構（讓畫面快速出來）
-  2. 再背景載入各 Section 任務與實際進度，並在時間軸上顯示「任務載入中…」半透明遮罩，完成後自動消失。
+- 支援 **個人存取權杖（PAT）** 或 **OAuth**（依後端與 Asana 應用設定）。
 
 ## 環境需求
 
-- Node.js 18+（建議使用 LTS 或以上）
-- npm 9+（或相容版本）
+- **Node.js 20+**（與 `Dockerfile` 一致；本機 18+ 多數情況仍可用）
+- **npm** 10+（或相容版本）
+- **Docker**（選用：本機 compose 或生產映像）
 
-## 安裝與啟動（本機開發）
+## 安裝與本機開發
 
 ### 1. 安裝依賴
 
@@ -68,157 +53,168 @@
 npm install
 ```
 
-### 2. 設定環境變數
-
-專案使用後端 OAuth Proxy，因此不再直接在前端放入 PAT，而是改由 `.env` 讀取設定。
-
-請參考 `.env.example` 建立 `.env`（或 `.env.local`）：
+### 2. 環境變數
 
 ```bash
 cp .env.example .env
 ```
 
-並填入以下關鍵欄位：
+**與 `.env.example` 的對應：** 範例檔目前**只有註解**，示範 **`VITE_BILLING_FIELD`** 與 **`DASHBOARD_IMAGE`**。下表其餘鍵請在複製後的 **`.env` 自行補上**（鍵名與下表一致即可）。
 
-- `ASANA_CLIENT_ID` / `ASANA_CLIENT_SECRET` / `ASANA_REDIRECT_URI`：Asana OAuth 應用資訊
-- `ASANA_DEFAULT_PAT`（選用）：預設後端使用的 PAT（方便開發）
-- `SESSION_SECRET`：`cookie-session` 用的金鑰
-- `VITE_REFRESH_INTERVAL_MINUTES`：前端自動刷新間隔（分鐘）
+後端（`server/index.mjs` 以 `dotenv` 讀取**專案根目錄** `.env`；`npm run server`／`docker run --env-file .env` 等皆適用）：
 
-### 3. 啟動開發環境（前後端各自啟動）
+**必填（OAuth）：**
 
-前端（Vite）：
+| 變數 | 說明 |
+|------|------|
+| `ASANA_CLIENT_ID` | Asana OAuth 應用 Client ID |
+| `ASANA_CLIENT_SECRET` | Asana OAuth Client Secret |
+| `ASANA_REDIRECT_URI` | OAuth 回呼 URL（需與 Asana 後台一致） |
+| `SESSION_SECRET` | `cookie-session` 簽章用密鑰 |
+
+**常用選用：**
+
+| 變數 | 說明 |
+|------|------|
+| `ASANA_DEFAULT_PAT` | 後端預設 PAT（僅建議本機開發） |
+| `PORT` | 後端埠號，預設 `3001` |
+
+前端（**本機**由 Vite 讀根目錄 `.env`；`VITE_*` 只在**當次** `dev`／`build` 生效。生產 **Docker 映像**裡的前端已在建置時打進 bundle，請款欄位請用 **`docker build --build-arg VITE_BILLING_FIELD=...`**，見下文〈Docker〉）：
+
+| 變數 | 說明 |
+|------|------|
+| `VITE_BILLING_FIELD` | **選用。** 請款自訂欄位（**單一變數**）：逗號分隔多個；**純數字**為欄位 **GID**，其餘為**名稱**；比對時 GID 優先。未設時依名稱嘗試「請款金額」「請款額」。例：`請款金額` 或 `請款金額,1234567890123456` |
+| `VITE_PROXY_TARGET` | 開發時 API Proxy 目標，預設 `http://localhost:3001`；`docker-compose.yml` 的 frontend 服務設為 `http://backend:3001` |
+| `VITE_STORAGE_ENCRYPT_KEY` | 選用；強化前端敏感資料儲存加密（`src/utils/storageEncrypt.ts`） |
+| `VITE_DEFAULT_PROJECT_GID` | 選用；`stores/dashboard` 預設專案 GID |
+
+**正式環境 Compose**（`docker-compose.prod.yml`；與該檔同目錄的 `.env` 主要用於 **Compose 變數替換**）：
+
+| 變數 | 說明 |
+|------|------|
+| `DASHBOARD_IMAGE` | **選用。** 覆寫預設映像（預設 `yuminggood/asana_dashboard:latest`） |
+| `PORT` | **選用。** 容器內後端埠，預設 `3001`（對應 compose 內 `PORT: ${PORT:-3001}`） |
+
+`docker-compose.prod.yml` **範例未**逐條列出 `ASANA_*`／`SESSION_SECRET`；部署時請在平台環境變數、自行加上 `env_file: .env`，或擴充 `environment`，讓容器內與本機一樣具備 OAuth 所需變數。
+
+### 3. 啟動開發（前後端分開）
+
+終端機一（Vite，預設 <http://localhost:5173>）：
 
 ```bash
 npm run dev
 ```
 
-後端（Node + Express）：
+終端機二（Express API + 開發時 Proxy）：
 
 ```bash
 npm run server
 ```
 
-開啟瀏覽器到 `http://localhost:5173` 即可。
+瀏覽器開啟 **<http://localhost:5173>**；前端會將 `/api` 等請求轉到後端（見 `vite.config.ts`）。
 
-### 4. 使用 Docker 啟動（本機開發，選用）
+### 4. 本機建置與預覽
 
-專案提供：
+```bash
+npm run build
+npm run preview
+```
 
-- `Dockerfile.dev`：開發用基底映像（與下方 compose 搭配）
-- `docker-compose.yml`：前後端分開跑 Vite dev + Express
+生產環境由後端提供 `dist` 靜態檔時，請以 **`npm run server`**（或 Docker 映像）啟動，並確認環境變數與 Asana 設定正確。
 
-在專案根目錄執行：
+## Docker
+
+### 開發用 Compose（`docker-compose.yml`）
 
 ```bash
 docker compose up --build
 ```
 
-會啟動：
+- **backend**：`3001`，`npm run server`
+- **frontend**：`5173`，`npm run dev -- --host 0.0.0.0`（`VITE_PROXY_TARGET=http://backend:3001`）
 
-- `backend` 容器：埠號 `3001`，執行 `npm run server`
-- `frontend` 容器：埠號 `5173`，執行 `npm run dev -- --host 0.0.0.0`
+### 生產映像（根目錄 `Dockerfile`）
 
-### 5. 建置生產映像並推送到 Docker Hub
+建置並標籤（範例與 Docker Hub 倉庫一致）。請款欄位需寫進前端時請加 **build-arg**（否則用程式內建預設名稱）：
 
-根目錄的 **`Dockerfile`** 用於 **`docker build` / CI** 建置生產映像並推送 Registry。**`docker-compose.prod.yml`** 預設**只寫 `image`**（從 Docker Hub 拉已建好的映像），NAS 上**不需要**放 `Dockerfile`；若要在本機從原始碼建置，可暫時在該 compose 內加上 `build:`（見檔案頂部註解）。
+```bash
+docker build -t yuminggood/asana_dashboard:latest -t yuminggood/asana_dashboard:1.1.0 \
+  --build-arg VITE_BILLING_FIELD=請款金額 .
+```
 
-1. 登入 Docker Hub（若尚未登入）：
+推送前請先 **`docker login`**：
 
-   ```bash
-   docker login
-   ```
+```bash
+docker push yuminggood/asana_dashboard:latest
+docker push yuminggood/asana_dashboard:1.1.0
+```
 
-2. 建置並打上標籤（請將 `<tagname>` 換成版本，例如 `v0.2.2` 或 `latest`）：
+單機執行（前後端同一埠 **3001**）：
 
-   ```bash
-   docker build -t yuminggood/asana_dashboard:<tagname> .
-   ```
+```bash
+docker run -p 3001:3001 --env-file .env yuminggood/asana_dashboard:latest
+```
 
-3. 推送到你的倉庫：
+瀏覽器：<http://localhost:3001>
 
-   ```bash
-   docker push yuminggood/asana_dashboard:<tagname>
-   ```
+### 正式環境 Compose（`docker-compose.prod.yml`）
 
-4. 執行容器（需帶入 Asana OAuth / Session 等環境變數，可參考 `.env.example`）：
+- 預設 **`image: yuminggood/asana_dashboard:latest`**（或於同目錄 `.env` 設定 `DASHBOARD_IMAGE`）。
+- 對外對應 **3001**；環境變數可寫在與 compose 同目錄的 `.env`（群暉等環境相容說明見檔案內註解）。
 
-   ```bash
-   docker run -p 3001:3001 --env-file .env yuminggood/asana_dashboard:<tagname>
-   ```
+```bash
+docker compose -f docker-compose.prod.yml pull
+docker compose -f docker-compose.prod.yml up -d
+```
 
-   瀏覽器開啟 `http://localhost:3001` 即可（前後端同一埠）。
-
-### 6. Docker Compose（正式環境）
-
-使用 **`docker-compose.prod.yml`**：單一服務 `app`，預設**只使用 `image:`** 從 Registry 拉取已建好的映像（**不需 Dockerfile**）；對外 **3001**（API + 前端靜態檔），並預設 `restart: unless-stopped`。
-
-1. **環境變數**：`docker-compose.prod.yml` 使用 `environment` + `${變數名}`，與 compose 檔**同目錄**的 `.env` 會由 Compose 自動讀取並代入（無需 `env_file` 區塊，相容群暉等只接受字串的舊版 Compose）。也可不建 `.env`，改在 Container Manager 內手動新增 `ASANA_CLIENT_ID`、`ASANA_CLIENT_SECRET`、`ASANA_REDIRECT_URI`、`SESSION_SECRET` 等。
-2. 拉取映像並背景啟動：
-
-   ```bash
-   docker compose -f docker-compose.prod.yml pull
-   docker compose -f docker-compose.prod.yml up -d
-   ```
-
-3. 瀏覽器開啟 `http://localhost:3001`（若主機埠有改，請對應修改 compose 內 `ports`）。
-
-預設映像為 `yuminggood/asana_dashboard:latest`；也可在與 compose 同目錄的 `.env` 設定 **`DASHBOARD_IMAGE=帳號/倉庫:標籤`** 覆寫，無須改 yaml。
-
-若 **`pull access denied` / `repository does not exist`**：
-
-1. **私有倉庫**：在 NAS / 主機先 **`docker login`**（群暉可在 Container Manager 登入 Docker Hub）。
-2. **還沒 push 過**：在開發機執行 `docker build -t 帳號/倉庫:標籤 .` 再 **`docker push`**，確認 Docker Hub 上能看到該倉庫。
-3. **倉庫名或帳號不對**：把 `image`（或 `DASHBOARD_IMAGE`）改成你 Hub 上**實際存在**的 `使用者名/映像名:標籤`。
-
-**若同時加上 `build:`**，`up --build` 才會在**本機**用 Dockerfile 建置並打上該 `image` 名稱（適合開發機或 CI，NAS 上通常不需要）。
+若出現 **`pull access denied`**：確認已 `docker login`、Hub 上倉庫存在，且映像名稱／標籤正確。
 
 ## 專案結構（節錄）
 
 ```text
+server/
+└── index.mjs                 # Express：OAuth、Proxy、靜態檔（生產）
+
 src/
-├── api/
-│   └── asana.ts           # 封裝所有 Asana API 呼叫與統計邏輯
-├── assets/
-├── components/
-│   ├── CircleProgress.vue # 圓形進度元件（任務 / 工作天完成度）
-│   ├── LinearProgress.vue # 線性進度條元件
-│   ├── OverallSummary.vue # 專案整體摘要
-│   ├── SectionCard.vue    # Section 卡片視圖
-│   └── SectionRanking.vue # Section 排行視圖
-├── stores/
-│   └── dashboard.ts       # Dashboard 的 Pinia 狀態管理
-├── types/
-│   └── asana.ts           # Asana 相關型別定義（Project / Section / Task 等）
+├── api/asana.ts              # Asana API 與請款欄位等解析
+├── composables/
+│   └── useProjectProgress.ts # 專案進度／時間序共用狀態與載入
+├── components/               # 圓形／線性進度、Section 卡片等
+├── stores/                   # auth、dashboard 等
+├── types/asana.ts
 ├── views/
-│   ├── Dashboard.vue      # 專案概況頁
-│   ├── WeeklyUpdates.vue  # 本週任務更新頁
-│   ├── WeeklyTrends.vue   # 十週更新統計頁
-│   └── ProgressTimeline.vue # 專案進度（時間軸）頁
-├── App.vue                # 分頁切換與整體佈局
+│   ├── Login.vue
+│   ├── WeeklyTrends.vue      # 十週更新統計
+│   ├── ProgressTimeline.vue  # 專案進度（橫向）
+│   └── ProgressTimelineByTime.vue  # 進度·時間序（月欄）
+├── App.vue                   # 頂部導覽與分頁
 └── main.ts
+
+Dockerfile                    # 生產多階段建置
+Dockerfile.dev                # 開發用基底（搭配 compose）
+docker-compose.yml
+docker-compose.prod.yml
+.env.example
 ```
 
 ## 注意事項
 
-- Asana API 有 Rate Limit（預設 150 req/min），專案多、Section 多時可能會較慢；程式中已盡量使用搜尋 API / 併發載入降低等待時間。
-- 個人權杖（PAT）與 OAuth 憑證請務必放在 `.env` 類檔案，不要提交到版本控制。
-- 封存（archived）專案在列表中會自動被過濾，不會出現在選單與專案進度視圖。
+- Asana API 有 **Rate Limit**（例如 150 req/min）；專案與 Section 多時載入較久屬正常，程式已盡量併發與搜尋 API。
+- **PAT、OAuth Secret、`SESSION_SECRET` 等請勿提交**到版本庫；僅放在 `.env` 或由部署平台注入。
+- **已封存（archived）** 的專案通常不會出現在列表與進度相關視圖。
 
-## Release Notes
+## 版本紀錄
 
-### v0.2.0
+### v1.1.0（目前 `package.json` 版本）
 
-- **專案進度**：Section 依截止日與完成度顯示風險顏色
-  - 紅色（落後）：截止日在一週內或已過期，且仍有未完成任務
-  - 黃色（風險）：截止日在兩週內、完成度低於 75%
-  - 紅/黃狀態時，完成度與任務數區塊會顯示對應背景色
-- **專案進度**：每個 Section 顯示請款金額加總；專案標題顯示總請款與錢幣進度（十格）
-- **專案進度**：時間軸支援滑鼠拖曳左右捲動，拖曳時不觸發任務詳情彈窗
-- **專案進度**：任務彈窗內顯示任務截止日；載入中遮罩限定在專案時間軸範圍內
-- **規則**：Cursor 提交與發版規則（`command-confirmation.md`）範例改為中文
+- **進度·時間序**：月欄表、未排欄、固定表頭、表頭／表身橫向捲動同步、欄寬與格線對齊。
+- **共用**：`useProjectProgress` 供「專案進度」與「進度·時間序」共用。
+- **請款**：單一環境變數 `VITE_BILLING_FIELD`（名稱與 GID 可混寫，見上文）。
+- **操作**：橫向拖曳捲動；載入中禁止拖曳。
+- **Docker 映像**：`yuminggood/asana_dashboard`（例：`latest`、`1.1.0`）。
 
-### v0.2.1
+### 較早版本（摘要）
 
-- **專案進度**（時間軸）：預設將「最左邊的 in-progress section」置中顯示（載入完成後自動調整；拖曳不干擾）
-- **專案進度**（UI）：年份/加總區塊的字體與間距、以及相關視覺排版細節微調
+- **v0.2.x**：專案進度風險色、請款顯示、拖曳捲動、載入遮罩與置中等 UI／行為調整。
+
+若需對照 Git 標籤，請見儲存庫 **Releases** 或 `git tag`。

@@ -37,5 +37,5 @@ services:
     environment:
       NODE_ENV: production
       PORT: ${PORT:-3001}
-      VITE_BILLING_FIELD_NAME: ${VITE_BILLING_FIELD_NAME:-請款金額}
+      # 請款欄位屬前端建置期嵌入；請在 docker build 使用 --build-arg VITE_BILLING_FIELD=...
     restart: unless-stopped
