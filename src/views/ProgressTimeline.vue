@@ -1,60 +1,20 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, watch, nextTick } from "vue";
-import { useAuthStore } from "@/stores/auth";
+import { ref, onMounted, onActivated } from "vue";
+import type { AsanaProject } from "@/types/asana";
 import {
-  fetchProjects,
-  fetchSectionsByProject,
-  fetchTasksBySection,
-} from "@/api/asana";
-import type { AsanaProject, AsanaSection, AsanaTask } from "@/types/asana";
+  useProjectProgress,
+  type SectionProgress,
+} from "@/composables/useProjectProgress";
 
-const auth = useAuthStore();
-
-type SectionProgress = {
-  section: AsanaSection;
-  totalTasks: number;
-  completedTasks: number;
-  completionRate: number;
-  status: "not-started" | "in-progress" | "done" | "behind" | "at-risk";
-  latestMilestoneDueOn: string | null;
-  /** 此 section 內所有任務的請款金額總和（依指定 custom field） */
-  billingTotal: number;
-  /** 此 section 內「已完成」任務的請款金額總和（視為已收） */
-  billingCollectedTotal: number;
-  tasks: AsanaTask[];
-};
-
-type ProjectProgress = {
-  project: AsanaProject;
-  sections: SectionProgress[];
-  /** 是否仍在載入此專案底下各 section 的任務 */
-  loadingTasks?: boolean;
-};
-
-const loading = ref(false);
-const error = ref<string | null>(null);
-const items = ref<ProjectProgress[]>([]);
-/** 每次重新載入時遞增，避免舊的非同步回調寫入造成 undefined 或錯位 */
-const loadIdRef = ref(0);
-
-/** 僅渲染有效項目，避免 item 為 undefined 時讀取 item.project 報錯 */
-const displayItems = computed(() =>
-  items.value.filter(
-    (i): i is ProjectProgress => i != null && i.project != null
-  )
-);
-
-// 專案列表：滑鼠拖曳左右滾動用狀態
 const isDraggingTimeline = ref(false);
 const dragStartX = ref(0);
 const dragScrollLeft = ref(0);
 const activeTimelineEl = ref<HTMLElement | null>(null);
 const timelineDragMoved = ref(false);
 
-// 用來在載入完成後把「時間軸上最後一個已完成（done）的 section」置中
 const timelineRefs = ref<Record<string, HTMLElement | null>>({});
 function registerTimelineRef(projectGid: string) {
-  return (el: any) => {
+  return (el: unknown) => {
     timelineRefs.value[projectGid] = el as HTMLElement | null;
   };
 }
@@ -107,416 +67,48 @@ function onTimelineMouseUp() {
   activeTimelineEl.value = null;
 }
 
+const {
+  loading,
+  error,
+  items,
+  displayItems,
+  projectsOptions,
+  projectsOptionsLoading,
+  selectedProjectGids,
+  projectPickerOpen,
+  selectedSection,
+  loadProgress,
+  todayLabel,
+  projectBillingTotal,
+  projectBillingCollectedTotal,
+  projectBillingFilledCoins,
+  projectBillingYearLines,
+  selectSection,
+  bootstrapFromStorage,
+  syncSelectionFromStorage,
+} = useProjectProgress({
+  onProjectTasksLoaded(projectGid) {
+    scrollTimelineToLastDoneSectionCenter(projectGid);
+  },
+});
+
 function onSectionClick(
   project: AsanaProject,
   sectionProgress: SectionProgress
 ) {
-  // 若剛剛是拖動時間軸，不要打開任務詳情
   if (timelineDragMoved.value) {
     timelineDragMoved.value = false;
     return;
   }
-  selectedSection.value = {
-    project,
-    section: sectionProgress.section,
-    tasks: sectionProgress.tasks,
-  };
-}
-
-function projectBillingTotal(p: ProjectProgress): number {
-  return p.sections.reduce((sum, s) => sum + (s.billingTotal || 0), 0);
-}
-
-function projectBillingCollectedTotal(p: ProjectProgress): number {
-  return p.sections.reduce(
-    (sum, s) => sum + (s.billingCollectedTotal || 0),
-    0
-  );
-}
-
-function projectBillingCollectedRate(p: ProjectProgress): number {
-  const total = projectBillingTotal(p);
-  if (!total) return 0;
-  return (projectBillingCollectedTotal(p) / total) * 100;
-}
-
-/** 將已收比例換算成 0~10 顆錢幣 */
-function projectBillingFilledCoins(p: ProjectProgress): number {
-  const rate = projectBillingCollectedRate(p);
-  if (!projectBillingTotal(p)) return 0;
-  return Math.max(0, Math.min(10, Math.round(rate / 10)));
-}
-
-type ProjectYearBillingLine = {
-  key: string;
-  /** 年份（例如 2026），沒有 due_on 則為 '-' */
-  label: string;
-  collected: number;
-  total: number;
-  isCurrentYear: boolean;
-};
-
-function projectBillingYearLines(p: ProjectProgress): ProjectYearBillingLine[] {
-  const currentYear = new Date().getFullYear();
-  const byYear = new Map<number, { collected: number; total: number }>();
-  let noDue = { collected: 0, total: 0 };
-
-  for (const s of p.sections) {
-    for (const t of s.tasks) {
-      const amountTotal = typeof t.billingAmount === "number" ? t.billingAmount : 0;
-      const amountCollected =
-        t.completed && typeof t.billingAmount === "number" ? t.billingAmount : 0;
-
-      if (amountTotal === 0 && amountCollected === 0) continue;
-
-      const dueStr = typeof t.due_on === "string" ? t.due_on : "";
-      if (dueStr) {
-        const dt = new Date(dueStr);
-        const y = dt.getFullYear();
-        if (!Number.isNaN(y)) {
-          const cur = byYear.get(y) ?? { collected: 0, total: 0 };
-          byYear.set(y, {
-            collected: cur.collected + amountCollected,
-            total: cur.total + amountTotal,
-          });
-          continue;
-        }
-      }
-
-      noDue.total += amountTotal;
-      noDue.collected += amountCollected;
-    }
-  }
-
-  const yearEntries: ProjectYearBillingLine[] = Array.from(byYear.entries())
-    .sort((a, b) => a[0] - b[0]) // 小的在上，大的在下
-    .map(([year, v]) => ({
-      key: String(year),
-      label: String(year),
-      collected: v.collected,
-      total: v.total,
-      isCurrentYear: year === currentYear,
-    }));
-
-  if (noDue.total > 0 || noDue.collected > 0) {
-    yearEntries.push({
-      key: "no-due",
-      label: "-",
-      collected: noDue.collected,
-      total: noDue.total,
-      isCurrentYear: false,
-    });
-  }
-
-  return yearEntries;
-}
-
-const projectsOptions = ref<AsanaProject[]>([]);
-const projectsOptionsLoading = ref(false);
-
-/** 首次進入頁面時只載入前 N 個專案以降低 loading */
-const INITIAL_LOAD_LIMIT = 5;
-const isFirstLoad = ref(true);
-
-const selectedProjectGids = ref<string[]>([]);
-const LS_KEY_PREFIX = "asana_progress_selected_project_gids_v1";
-const projectPickerOpen = ref(false);
-
-function getSelectedProjectsStorageKey(): string {
-  const hash = auth.getTokenHash();
-  return `${LS_KEY_PREFIX}_${hash ?? ""}`;
-}
-
-function loadSelectedFromLocalStorage(): string[] {
-  try {
-    const key = getSelectedProjectsStorageKey();
-    const raw = localStorage.getItem(key);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return [];
-    return parsed.filter((x) => typeof x === "string");
-  } catch {
-    return [];
-  }
-}
-
-function persistSelectedToLocalStorage() {
-  try {
-    const key = getSelectedProjectsStorageKey();
-    localStorage.setItem(key, JSON.stringify(selectedProjectGids.value));
-  } catch {
-    // ignore
-  }
-}
-
-watch(selectedProjectGids, () => {
-  persistSelectedToLocalStorage();
-});
-
-// 切換 PAT（登出／換帳號）時，改為載入該 PAT 對應的專案選擇
-watch(
-  () => auth.getTokenHash(),
-  () => {
-    selectedProjectGids.value = loadSelectedFromLocalStorage();
-  }
-);
-
-const selectedSection = ref<{
-  project: AsanaProject;
-  section: AsanaSection;
-  tasks: AsanaTask[];
-} | null>(null);
-
-function todayLabel(): string {
-  return new Date().toLocaleDateString("zh-TW", {
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  });
-}
-
-/** 截止日是否在「今天起算一週內」或「已經過期但尚未完成」：
- * - 含今天、含第 7 天
- * - 若截止日在今天之前，視為符合條件（只要還有未完成任務，外層會套用紅色）
- */
-function isDueWithinOneWeek(dueDateStr: string): boolean {
-  const due = new Date(dueDateStr);
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  due.setHours(0, 0, 0, 0);
-  const oneWeekLater = new Date(today);
-  oneWeekLater.setDate(oneWeekLater.getDate() + 7);
-  // 若已到期（due < today）也算在內；或在未來 7 天內
-  return due <= oneWeekLater;
-}
-
-/** 截止日是否在「今天起算兩週內」（含今天、含第 14 天） */
-function isDueWithinTwoWeeks(dueDateStr: string): boolean {
-  const due = new Date(dueDateStr);
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  due.setHours(0, 0, 0, 0);
-  const twoWeeksLater = new Date(today);
-  twoWeeksLater.setDate(twoWeeksLater.getDate() + 14);
-  return due >= today && due <= twoWeeksLater;
-}
-
-function calcSectionProgress(
-  section: AsanaSection,
-  tasks: AsanaTask[]
-): SectionProgress {
-  const totalTasks = tasks.length;
-  const completedTasks = tasks.filter((t) => t.completed).length;
-  const completionRate =
-    totalTasks === 0 ? 0 : completedTasks / Math.max(totalTasks, 1);
-
-  // 請款金額總和（僅計算有 billingAmount 的任務）
-  const billingTotal = tasks.reduce(
-    (sum, t) => sum + (typeof t.billingAmount === "number" ? t.billingAmount : 0),
-    0
-  );
-
-  // 已收金額：僅計算「已完成」任務的請款金額
-  const billingCollectedTotal = tasks.reduce(
-    (sum, t) =>
-      sum +
-      (t.completed && typeof t.billingAmount === "number" ? t.billingAmount : 0),
-    0
-  );
-
-  // 里程碑任務中，找最晚的 due_on
-  const milestoneDueDates = tasks
-    .filter(
-      (t) =>
-        t.resource_subtype === "milestone" &&
-        typeof t.due_on === "string" &&
-        t.due_on !== ""
-    )
-    .map((t) => t.due_on as string);
-
-  let latestMilestoneDueOn: string | null = null;
-  if (milestoneDueDates.length > 0) {
-    milestoneDueDates.sort();
-    latestMilestoneDueOn =
-      milestoneDueDates[milestoneDueDates.length - 1] ?? null;
-  }
-
-  // 顏色狀態邏輯
-  let status: SectionProgress["status"];
-  if (totalTasks === 0) {
-    // 完全沒有任務 → 一律視為未開始（灰色）
-    status = "not-started";
-  } else if (completedTasks === totalTasks) {
-    // 全部完成 → 綠色
-    status = "done";
-  } else {
-    // 有任務未完成（包含完成數為 0 的情況）先視為進行中，
-    // 之後再依截止日決定是否要標示為紅 / 黃
-    status = "in-progress";
-  }
-  // 有里程碑截止日，但時間點「不在兩週內、也不在一週內」，
-  // 且完全沒有任何任務完成 → 視為還沒開始（維持灰色）
-  if (
-    completedTasks === 0 &&
-    latestMilestoneDueOn &&
-    !isDueWithinTwoWeeks(latestMilestoneDueOn) &&
-    !isDueWithinOneWeek(latestMilestoneDueOn)
-  ) {
-    status = "not-started";
-  }
-
- // 根本沒有里程碑截止日，且完全沒有任何任務完成 → 一樣視為還沒開始（灰色）
- if (!latestMilestoneDueOn && completedTasks === 0) {
-    status = "not-started";
-  }
-
-  // 截止日在一週內（或已過期），且有任務尚未完成 → 一律視為落後（紅色）
-  if (
-    status === "in-progress" &&
-    latestMilestoneDueOn &&
-    isDueWithinOneWeek(latestMilestoneDueOn)
-  ) {
-    status = "behind";
-  }
-
-  // 截止日在兩週內且超過 1/4 任務未完成（完成度 < 75%）→ 標示為風險（黃色）
-  //（若同時符合紅色條件，會先被上面吃掉，這裡就不會再進來）
-  if (
-    status === "in-progress" &&
-    latestMilestoneDueOn &&
-    isDueWithinTwoWeeks(latestMilestoneDueOn) && 
-    !isDueWithinOneWeek(latestMilestoneDueOn) &&
-    completionRate < 0.75
-  ) {
-    status = "at-risk";
-  }
-
- 
-  
-  return {
-    section,
-    totalTasks,
-    completedTasks,
-    completionRate,
-    status,
-    latestMilestoneDueOn,
-    billingTotal,
-    billingCollectedTotal,
-    tasks,
-  };
-}
-
-async function loadProgress() {
-  loading.value = true;
-  error.value = null;
-  loadIdRef.value += 1;
-  const thisLoadId = loadIdRef.value;
-
-  try {
-    // 每次載入都重新抓一次專案清單，確保權杖或權限變更後可以看到最新專案
-    projectsOptionsLoading.value = true;
-    const fetchedProjects = await fetchProjects();
-    projectsOptions.value = fetchedProjects;
-    projectsOptionsLoading.value = false;
-
-    // 過濾掉 localStorage 中可能不再可用的專案 GID（例如權杖更新後看不到）
-    if (selectedProjectGids.value.length > 0) {
-      selectedProjectGids.value = selectedProjectGids.value.filter((gid) =>
-        projectsOptions.value.some((p) => p.gid === gid)
-      );
-    }
-
-    let projectsToLoad =
-      selectedProjectGids.value.length > 0
-        ? projectsOptions.value.filter((p) =>
-            selectedProjectGids.value.includes(p.gid)
-          )
-        : projectsOptions.value;
-
-    // 首次進入只載入前 N 個專案，降低初始 loading
-    if (isFirstLoad.value) {
-      projectsToLoad = projectsToLoad.slice(0, INITIAL_LOAD_LIMIT);
-      isFirstLoad.value = false;
-    }
-
-    // 第一步：併發取得所有專案的 sections，保留既有資料避免整頁清空閃爍
-    const projectSectionList = await Promise.all(
-      projectsToLoad.map(async (project) => {
-        const sections = await fetchSectionsByProject(project.gid);
-        return { project, sections };
-      })
-    );
-
-    const existingByProjectGid = new Map(
-      items.value.map((item) => [item.project.gid, item] as const)
-    );
-    items.value = projectSectionList.map(({ project, sections }) => {
-      const existingItem = existingByProjectGid.get(project.gid);
-      const existingSectionByGid = new Map(
-        (existingItem?.sections ?? []).map((sp) => [sp.section.gid, sp] as const)
-      );
-      const mergedSections: SectionProgress[] = sections.map(
-        (section) =>
-          existingSectionByGid.get(section.gid) ?? calcSectionProgress(section, [])
-      );
-      return {
-        project,
-        sections: mergedSections,
-        loadingTasks: true,
-      };
-    });
-
-    // 第二步：併發載入各專案的任務，各自完成時只更新該專案
-    projectSectionList.forEach(({ project, sections }) => {
-      (async () => {
-        try {
-          const sectionProgressListRaw = await Promise.all(
-            sections.map(async (section) => {
-              const tasks = await fetchTasksBySection(section.gid);
-              if (section.name === "未命名區段" && tasks.length === 0) {
-                return null as SectionProgress | null;
-              }
-              return calcSectionProgress(section, tasks);
-            })
-          );
-          const sectionProgressList = sectionProgressListRaw.filter(
-            (x): x is SectionProgress => x !== null
-          );
-          // 若使用者已重新載入，此回調屬於舊的 load，不再寫入
-          if (thisLoadId !== loadIdRef.value) return;
-          const idx = items.value.findIndex((x) => x.project.gid === project.gid);
-          if (idx < 0) return;
-          items.value[idx] = {
-            project,
-            sections: sectionProgressList,
-            loadingTasks: false,
-          };
-          // 任務載入完成後，將「最後一個已完成的 section」置中顯示
-          nextTick(() => {
-            if (thisLoadId !== loadIdRef.value) return;
-            scrollTimelineToLastDoneSectionCenter(project.gid);
-          });
-        } catch (e) {
-          console.error("載入專案 section 任務失敗", e);
-        }
-      })();
-    });
-
-    if (projectsToLoad.length === 0) {
-      items.value = [];
-      error.value = "目前選擇的專案沒有可載入的資料（可能已被封存或權限不足）。";
-    }
-  } catch (e) {
-    console.error("載入專案進度失敗", e);
-    error.value = "載入專案進度失敗，請稍後重試。";
-  } finally {
-    loading.value = false;
-  }
+  selectSection(project, sectionProgress);
 }
 
 onMounted(() => {
-  selectedProjectGids.value = loadSelectedFromLocalStorage();
-  loadProgress();
+  bootstrapFromStorage();
+});
+
+onActivated(() => {
+  syncSelectionFromStorage();
 });
 </script>
 
@@ -586,20 +178,24 @@ onMounted(() => {
               正在載入專案清單…
             </div>
 
-            <div v-else>
-              <select
-                v-model="selectedProjectGids"
-                multiple
-                class="project-select"
-              >
-                <option
+            <div v-else class="picker-checkboxes-wrap">
+              <ul class="project-checkbox-list" role="listbox" aria-label="專案清單">
+                <li
                   v-for="p in projectsOptions"
                   :key="p.gid"
-                  :value="p.gid"
+                  class="project-checkbox-item"
                 >
-                  {{ p.name }}
-                </option>
-              </select>
+                  <label class="project-checkbox-label">
+                    <input
+                      v-model="selectedProjectGids"
+                      type="checkbox"
+                      class="project-checkbox-input"
+                      :value="p.gid"
+                    />
+                    <span class="project-checkbox-text">{{ p.name }}</span>
+                  </label>
+                </li>
+              </ul>
 
               <div class="picker-actions">
                 <button
@@ -1159,19 +755,74 @@ onMounted(() => {
   gap: 8px;
 }
 
-.project-picker-panel {
-  width: min(720px, 100% - 40px);
-}
 .picker-body {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 16px;
+  flex: 1;
+  min-height: 0;
+}
+.picker-checkboxes-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  flex: 1;
+  min-height: 0;
+}
+.project-checkbox-list {
+  list-style: none;
+  margin: 0;
+  padding: 4px;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  background: #f9fafb;
+  max-height: min(58vh, 520px);
+  overflow-y: auto;
+  flex: 1;
+  min-height: 280px;
+}
+.project-checkbox-item {
+  margin: 0;
+}
+.project-checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 16px;
+  margin: 4px;
+  border-radius: 10px;
+  cursor: pointer;
+  font-size: 15px;
+  font-weight: 600;
+  color: #111827;
+  background: #fff;
+  border: 1px solid transparent;
+  transition: background 0.12s ease, border-color 0.12s ease;
+}
+.project-checkbox-label:hover {
+  background: #f3f4f6;
+  border-color: #e5e7eb;
+}
+.project-checkbox-input {
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  accent-color: #4f46e5;
+  cursor: pointer;
+}
+.project-checkbox-text {
+  flex: 1;
+  min-width: 0;
+  line-height: 1.35;
+  word-break: break-word;
 }
 .picker-actions {
   display: flex;
   align-items: center;
   justify-content: flex-end;
   gap: 12px;
+  flex-shrink: 0;
+  padding-top: 4px;
 }
 .filter-left {
   min-width: 220px;
@@ -1190,21 +841,6 @@ onMounted(() => {
   display: flex;
   align-items: center;
   gap: 12px;
-}
-.project-select {
-  width: 360px;
-  max-width: 55vw;
-  height: 130px;
-  padding: 8px 10px;
-  border-radius: 8px;
-  border: 1px solid #d1d5db;
-  background: #fff;
-  font-size: 13px;
-}
-.project-select:focus {
-  outline: none;
-  border-color: #4f46e5;
-  box-shadow: 0 0 0 2px rgba(79, 70, 229, 0.2);
 }
 .filter-actions {
   display: flex;
@@ -1382,6 +1018,27 @@ onMounted(() => {
   max-height: calc(100vh - 120px);
   overflow-y: auto;
 }
+/* 專案選擇彈窗：較大版面、捲動僅在清單內（需覆寫上一段 .selected-panel） */
+.selected-panel.project-picker-panel {
+  width: min(960px, calc(100vw - 48px));
+  max-height: min(88vh, 820px);
+  padding: 20px 22px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+.selected-panel.project-picker-panel .selected-header {
+  margin-bottom: 12px;
+  flex-shrink: 0;
+}
+.selected-panel.project-picker-panel .selected-title {
+  font-size: 17px;
+}
+.selected-panel.project-picker-panel .selected-range {
+  font-size: 13px;
+  color: #6b7280;
+  margin-top: 4px;
+}
 .selected-header {
   display: flex;
   flex-direction: column;
@@ -1515,9 +1172,22 @@ onMounted(() => {
     flex-direction: column;
     align-items: flex-start;
   }
-  .project-select {
-    width: 100%;
-    max-width: 100%;
+  .selected-panel.project-picker-panel {
+    width: calc(100vw - 24px);
+    max-height: 90vh;
+    padding: 16px;
+  }
+  .project-checkbox-list {
+    max-height: 50vh;
+    min-height: 200px;
+  }
+  .project-checkbox-label {
+    padding: 16px 14px;
+    font-size: 16px;
+  }
+  .project-checkbox-input {
+    width: 22px;
+    height: 22px;
   }
   .project-row {
     grid-template-columns: 1fr;

@@ -4,16 +4,18 @@ import { useAuthStore } from "@/stores/auth";
 import Login from "@/views/Login.vue";
 import WeeklyTrends from "@/views/WeeklyTrends.vue";
 import ProgressTimeline from "@/views/ProgressTimeline.vue";
+import ProgressTimelineByTime from "@/views/ProgressTimelineByTime.vue";
 
 const auth = useAuthStore();
 
-type Tab = "trends" | "progress";
+type Tab = "trends" | "progress" | "progressByTime";
 
 const currentTab = ref<Tab>("progress");
 
 const tabComponents: Record<Tab, Component> = {
   trends: WeeklyTrends,
   progress: ProgressTimeline,
+  progressByTime: ProgressTimelineByTime,
 };
 
 const currentView = computed(() => tabComponents[currentTab.value]);
@@ -47,6 +49,13 @@ onMounted(() => {
           @click="currentTab = 'progress'"
         >
           專案進度
+        </button>
+        <button
+          class="nav-tab"
+          :class="{ active: currentTab === 'progressByTime' }"
+          @click="currentTab = 'progressByTime'"
+        >
+          進度·時間序
         </button>
         <button
           type="button"

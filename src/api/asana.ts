@@ -114,11 +114,86 @@ export async function fetchSectionsByProject(
   }));
 }
 
-// 用於從 custom fields 取出請款金額的欄位名稱（可透過 VITE_BILLING_FIELD_NAME 覆蓋），預設使用「請款金額」
-const BILLING_FIELD_NAME =
-  (typeof import.meta !== "undefined" &&
-    (import.meta as any).env?.VITE_BILLING_FIELD_NAME) ||
-  "請款金額";
+/** 環境變數中的欄位名稱（可逗號分隔多個）；空字串則僅用預設候選名稱 */
+const BILLING_FIELD_NAME_ENV =
+  typeof import.meta !== "undefined"
+    ? String((import.meta as any).env?.VITE_BILLING_FIELD_NAME ?? "").trim()
+    : "";
+
+/** 選用：自訂欄位 gid，逗號分隔；有設定時優先於名稱比對 */
+const BILLING_FIELD_GID_ENV =
+  typeof import.meta !== "undefined"
+    ? String((import.meta as any).env?.VITE_BILLING_FIELD_GID ?? "").trim()
+    : "";
+
+const DEFAULT_BILLING_FIELD_NAMES = ["請款金額", "請款額"];
+
+function billingNamesToMatch(): string[] {
+  const fromEnv = BILLING_FIELD_NAME_ENV.split(/[，,]/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+  return [...new Set([...fromEnv, ...DEFAULT_BILLING_FIELD_NAMES])];
+}
+
+const BILLING_FIELD_GIDS = BILLING_FIELD_GID_ENV.split(/[，,]/)
+  .map((s) => s.trim())
+  .filter(Boolean);
+
+function normalizeCfName(name: string): string {
+  return name.trim().replace(/\s+/g, " ");
+}
+
+function parseNumberFromBillingText(s: string | null | undefined): number | null {
+  if (s == null || typeof s !== "string") return null;
+  const cleaned = s.replace(/,/g, "").replace(/[^\d.-]/g, "").trim();
+  if (!cleaned) return null;
+  const n = Number.parseFloat(cleaned);
+  return Number.isFinite(n) ? n : null;
+}
+
+function pickBillingCustomField(customFields: unknown): Record<string, unknown> | null {
+  if (!Array.isArray(customFields)) return null;
+
+  if (BILLING_FIELD_GIDS.length > 0) {
+    const byGid = customFields.find(
+      (cf: any) =>
+        cf &&
+        typeof cf.gid === "string" &&
+        BILLING_FIELD_GIDS.includes(cf.gid)
+    ) as Record<string, unknown> | undefined;
+    if (byGid) return byGid;
+  }
+
+  const names = billingNamesToMatch();
+  for (const want of names) {
+    const w = normalizeCfName(want).toLowerCase();
+    const found = customFields.find(
+      (cf: any) =>
+        cf &&
+        typeof cf.name === "string" &&
+        normalizeCfName(cf.name).toLowerCase() === w
+    ) as Record<string, unknown> | undefined;
+    if (found) return found;
+  }
+
+  return null;
+}
+
+function billingAmountFromCustomField(cf: Record<string, unknown> | null): number | null {
+  if (!cf) return null;
+  const num = cf.number_value;
+  if (typeof num === "number" && Number.isFinite(num)) return num;
+
+  const fromText = parseNumberFromBillingText(cf.text_value as string | undefined);
+  if (fromText != null) return fromText;
+
+  const fromDisplay = parseNumberFromBillingText(
+    cf.display_value as string | undefined
+  );
+  if (fromDisplay != null) return fromDisplay;
+
+  return null;
+}
 
 export async function fetchTasksBySection(
   sectionGid: string
@@ -129,7 +204,7 @@ export async function fetchTasksBySection(
   do {
     const params: Record<string, string> = {
       opt_fields:
-        "gid,name,completed,completed_at,created_at,modified_at,due_on,assignee.name,resource_subtype,permalink_url,custom_fields.name,custom_fields.number_value",
+        "gid,name,completed,completed_at,created_at,modified_at,due_on,assignee.name,resource_subtype,permalink_url,custom_fields.gid,custom_fields.name,custom_fields.type,custom_fields.number_value,custom_fields.text_value,custom_fields.display_value",
       limit: "100",
     };
     if (offset) params["offset"] = offset;
@@ -137,18 +212,8 @@ export async function fetchTasksBySection(
     const res = await api.get(`/sections/${sectionGid}/tasks`, { params });
 
     const tasks = res.data.data.map((t: any) => {
-      const billingField =
-        Array.isArray(t.custom_fields) && BILLING_FIELD_NAME
-          ? t.custom_fields.find(
-              (cf: any) =>
-                cf && typeof cf.name === "string" && cf.name === BILLING_FIELD_NAME
-            )
-          : null;
-
-      const billingAmountRaw =
-        billingField && typeof billingField.number_value === "number"
-          ? billingField.number_value
-          : null;
+      const billingField = pickBillingCustomField(t.custom_fields);
+      const billingAmountRaw = billingAmountFromCustomField(billingField);
 
       const task: AsanaTask = {
         gid: t.gid,
