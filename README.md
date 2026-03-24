@@ -142,6 +142,22 @@ docker build -t yuminggood/asana_dashboard:latest -t yuminggood/asana_dashboard:
   --build-arg VITE_BILLING_FIELD=請款金額 .
 ```
 
+若要確保可在 **Linux ARM64/v8**（如 Apple Silicon、部分 NAS、雲端 ARM VM）執行，請用 buildx 建置對應平台（或直接建 multi-arch）：
+
+```bash
+# 只建 ARM64/v8（可 --load 到本機）
+docker buildx build --platform linux/arm64/v8 \
+  -t yuminggood/asana_dashboard:arm64 \
+  --build-arg VITE_BILLING_FIELD=請款金額 .
+
+# 同時建 amd64 + arm64/v8 並推送（推薦給 Docker Hub）
+docker buildx build --platform linux/amd64,linux/arm64/v8 \
+  -t yuminggood/asana_dashboard:latest \
+  -t yuminggood/asana_dashboard:1.1.0 \
+  --build-arg VITE_BILLING_FIELD=請款金額 \
+  --push .
+```
+
 推送前請先 **`docker login`**：
 
 ```bash
@@ -161,6 +177,7 @@ docker run -p 3001:3001 --env-file .env yuminggood/asana_dashboard:latest
 
 - 預設 **`image: yuminggood/asana_dashboard:latest`**（或於同目錄 `.env` 設定 `DASHBOARD_IMAGE`）。
 - 對外對應 **3001**；環境變數可寫在與 compose 同目錄的 `.env`（群暉等環境相容說明見檔案內註解）。
+- 若主機是 ARM64 且要強制指定平台，可在 compose 服務加上 `platform: linux/arm64/v8`。
 
 ```bash
 docker compose -f docker-compose.prod.yml pull

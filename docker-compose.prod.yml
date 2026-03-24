@@ -30,6 +30,8 @@
 
 services:
   app:
+    # 若部署主機為 ARM64，可取消下一行註解強制平台
+    # platform: linux/arm64/v8
     # 可於同目錄 .env 設定 DASHBOARD_IMAGE 覆寫（方便換帳號/私有庫/其它 Registry）
     image: ${DASHBOARD_IMAGE:-yuminggood/asana_dashboard:latest}
     ports:
