@@ -35,11 +35,21 @@ const {
   syncSelectionFromStorage,
 } = useProjectProgress();
 
+const projectSearchQuery = ref("");
+
+const filteredDisplayItems = computed(() => {
+  const q = projectSearchQuery.value.trim().toLowerCase();
+  if (!q) return displayItems.value;
+  return displayItems.value.filter((item) =>
+    item.project.name.toLowerCase().includes(q)
+  );
+});
+
 /** 任務載入中或專案進度重載中時禁止橫向拖曳捲動 */
 const bytimeDragScrollDisabled = computed(
   () =>
     loading.value ||
-    displayItems.value.some((item: ProjectProgress) => item.loadingTasks)
+    filteredDisplayItems.value.some((item: ProjectProgress) => item.loadingTasks)
 );
 
 const isDraggingBytimeScroll = ref(false);
@@ -208,7 +218,7 @@ function sectionLatestTaskCreatedMs(sp: SectionProgress): number {
 
 const monthColumns = computed((): MonthColumn[] => {
   const bounds: Ym[] = [];
-  for (const item of displayItems.value) {
+  for (const item of filteredDisplayItems.value) {
     for (const sp of item.sections) {
       if (!sp.latestMilestoneDueOn) continue;
       const ym = parseDueToYm(sp.latestMilestoneDueOn);
@@ -284,7 +294,7 @@ function buildBucketMap(item: ProjectProgress): Map<string, SectionProgress[]> {
 
 const cellBucketsByProjectGid = computed(() => {
   const out = new Map<string, Map<string, SectionProgress[]>>();
-  for (const item of displayItems.value) {
+  for (const item of filteredDisplayItems.value) {
     out.set(item.project.gid, buildBucketMap(item));
   }
   return out;
@@ -318,7 +328,7 @@ function formatSectionDueOnDisplay(sp: SectionProgress): string {
 }
 
 const anyProjectLoadingTasks = computed(() =>
-  displayItems.value.some((i) => i.loadingTasks)
+  filteredDisplayItems.value.some((i) => i.loadingTasks)
 );
 
 /** false = 未排欄折疊（省寬度），點表頭或列上數字展開 */
@@ -326,7 +336,7 @@ const unschedColumnExpanded = ref(false);
 
 const totalUnscheduledCount = computed(() => {
   let n = 0;
-  for (const item of displayItems.value) {
+  for (const item of filteredDisplayItems.value) {
     n += sectionsInCell(item, UNSCHEDULED_KEY).length;
   }
   return n;
@@ -363,43 +373,60 @@ onActivated(() => {
           section 對齊該月；無日期或無法對應月欄者集中在<strong>未排</strong>。
         </p>
       </div>
-      <div class="meta">
-        <div class="legend-header">
-          <span class="legend-item">
-            <span class="legend-dot legend-not-started" /> 尚未開始
-          </span>
-          <span class="legend-item">
-            <span class="legend-dot legend-progress" /> 進行中
-          </span>
-          <span class="legend-item">
-            <span class="legend-dot legend-done" /> 已完成
-          </span>
-          <span class="legend-item">
-            <span class="legend-dot legend-behind" /> 落後
-          </span>
-          <span class="legend-item">
-            <span class="legend-dot legend-at-risk" /> 風險
-          </span>
-        </div>
-        <div class="meta-right">
-          <div class="date-label">日期：{{ todayLabel() }}</div>
-          <button
-            type="button"
-            class="reload-btn"
-            :disabled="loading"
-            @click="loadProgress"
-          >
-            {{ loading ? "載入中…" : "重新載入" }}
-          </button>
-          <button
-            type="button"
-            class="secondary-btn"
-            :disabled="projectsOptionsLoading || loading"
-            @click="projectPickerOpen = true"
-          >
-            選擇專案
-          </button>
-        </div>
+
+      <div
+        v-if="!error"
+        class="header-search"
+      >
+        <label class="project-search-label" for="project-search-bytime-input">專案搜尋</label>
+        <input
+          id="project-search-bytime-input"
+          v-model="projectSearchQuery"
+          type="search"
+          class="project-search-input"
+          placeholder="輸入關鍵字篩選專案名稱，留空顯示全部"
+          autocomplete="off"
+          spellcheck="false"
+          :disabled="loading"
+        />
+      </div>
+
+      <div class="legend-header">
+        <span class="legend-item">
+          <span class="legend-dot legend-not-started" /> 尚未開始
+        </span>
+        <span class="legend-item">
+          <span class="legend-dot legend-progress" /> 進行中
+        </span>
+        <span class="legend-item">
+          <span class="legend-dot legend-done" /> 已完成
+        </span>
+        <span class="legend-item">
+          <span class="legend-dot legend-behind" /> 落後
+        </span>
+        <span class="legend-item">
+          <span class="legend-dot legend-at-risk" /> 風險
+        </span>
+      </div>
+
+      <div class="meta-right">
+        <div class="date-label">日期：{{ todayLabel() }}</div>
+        <button
+          type="button"
+          class="reload-btn"
+          :disabled="loading"
+          @click="loadProgress"
+        >
+          {{ loading ? "載入中…" : "重新載入" }}
+        </button>
+        <button
+          type="button"
+          class="secondary-btn"
+          :disabled="projectsOptionsLoading || loading"
+          @click="projectPickerOpen = true"
+        >
+          選擇專案
+        </button>
       </div>
     </header>
 
@@ -475,6 +502,14 @@ onActivated(() => {
       </div>
       <div v-else-if="items.length === 0" class="state empty">
         目前沒有可顯示的專案進度。
+      </div>
+      <div
+        v-else-if="
+          projectSearchQuery.trim() !== '' && filteredDisplayItems.length === 0
+        "
+        class="state empty"
+      >
+        沒有符合關鍵字的專案。
       </div>
       <section v-else class="bytime-calendar-section">
         <div class="bytime-sticky-thead-wrap">
@@ -574,7 +609,7 @@ onActivated(() => {
             </colgroup>
             <tbody>
               <tr
-                v-for="item in displayItems"
+                v-for="item in filteredDisplayItems"
                 :key="item.project.gid"
                 class="bytime-body-row"
               >
@@ -898,13 +933,17 @@ onActivated(() => {
   flex-direction: column;
 }
 .page-header {
-  padding: 16px 24px;
+  padding: 14px 24px 16px;
   background: #fff;
   border-bottom: 1px solid #e5e7eb;
-  display: flex;
+  display: grid;
+  grid-template-columns: auto minmax(200px, 1fr) auto auto;
   align-items: center;
-  justify-content: space-between;
-  gap: 16px;
+  column-gap: 16px;
+  row-gap: 12px;
+}
+.title-block {
+  min-width: 0;
 }
 .title-block h1 {
   margin: 0;
@@ -917,23 +956,100 @@ onActivated(() => {
   font-size: 12px;
   color: #6b7280;
 }
-.meta {
+.header-search {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 12px;
+  gap: 10px;
+  min-width: 0;
+  max-width: 480px;
 }
 .legend-header {
   display: flex;
   flex-wrap: wrap;
-  gap: 12px;
+  align-items: center;
+  gap: 10px 12px;
   font-size: 12px;
   color: #4b5563;
+  justify-content: flex-end;
+  min-width: 0;
 }
 .meta-right {
   display: flex;
   align-items: center;
   gap: 12px;
+  flex-shrink: 0;
+}
+@media (max-width: 1100px) {
+  .page-header {
+    grid-template-columns: 1fr 1fr;
+    grid-template-areas:
+      "title title"
+      "search search"
+      "legend actions";
+  }
+  .title-block {
+    grid-area: title;
+  }
+  .header-search {
+    grid-area: search;
+    max-width: none;
+  }
+  .legend-header {
+    grid-area: legend;
+    justify-content: flex-start;
+  }
+  .meta-right {
+    grid-area: actions;
+    justify-content: flex-end;
+  }
+}
+@media (max-width: 640px) {
+  .page-header {
+    grid-template-columns: 1fr;
+    grid-template-areas:
+      "title"
+      "search"
+      "legend"
+      "actions";
+  }
+  .legend-header {
+    justify-content: flex-start;
+  }
+  .meta-right {
+    flex-wrap: wrap;
+    justify-content: flex-start;
+  }
+}
+.project-search-label {
+  flex: 0 0 auto;
+  font-size: 13px;
+  font-weight: 600;
+  color: #374151;
+  white-space: nowrap;
+}
+.project-search-input {
+  flex: 1;
+  min-width: 0;
+  height: 36px;
+  padding: 0 12px;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  font-size: 13px;
+  color: #111827;
+  background: #fff;
+}
+.project-search-input::placeholder {
+  color: #9ca3af;
+}
+.project-search-input:focus {
+  outline: none;
+  border-color: #6366f1;
+  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.2);
+}
+.project-search-input:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+  background: #f3f4f6;
 }
 .date-label {
   font-size: 12px;
@@ -1748,10 +1864,6 @@ onActivated(() => {
 }
 
 @media (max-width: 768px) {
-  .page-header {
-    flex-direction: column;
-    align-items: flex-start;
-  }
   .selected-panel.project-picker-panel {
     width: calc(100vw - 24px);
     max-height: 90vh;

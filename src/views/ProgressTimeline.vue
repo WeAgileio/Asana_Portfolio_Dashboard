@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, onActivated } from "vue";
+import { ref, computed, onMounted, onActivated } from "vue";
 import type { AsanaProject } from "@/types/asana";
 import {
   useProjectProgress,
@@ -110,6 +110,16 @@ onMounted(() => {
 onActivated(() => {
   syncSelectionFromStorage();
 });
+
+const projectSearchQuery = ref("");
+
+const filteredDisplayItems = computed(() => {
+  const q = projectSearchQuery.value.trim().toLowerCase();
+  if (!q) return displayItems.value;
+  return displayItems.value.filter((item) =>
+    item.project.name.toLowerCase().includes(q)
+  );
+});
 </script>
 
 <template>
@@ -119,43 +129,60 @@ onActivated(() => {
         <h1>專案進度</h1>
         <p>以 Asana 專案與 section 為單位，根據任務完成率與里程碑截止日展示專案進度。</p>
       </div>
-      <div class="meta">
-        <div class="legend-header">
-          <span class="legend-item">
-            <span class="legend-dot legend-not-started" /> 尚未開始
-          </span>
-          <span class="legend-item">
-            <span class="legend-dot legend-progress" /> 進行中
-          </span>
-          <span class="legend-item">
-            <span class="legend-dot legend-done" /> 已完成
-          </span>
-          <span class="legend-item">
-            <span class="legend-dot legend-behind" /> 落後（一週內截止未完成）
-          </span>
-          <span class="legend-item">
-            <span class="legend-dot legend-at-risk" /> 風險（兩週內截止且逾 1/4 未完成）
-          </span>
-        </div>
-        <div class="meta-right">
-          <div class="date-label">日期：{{ todayLabel() }}</div>
-          <button
-            type="button"
-            class="reload-btn"
-            :disabled="loading"
-            @click="loadProgress"
-          >
-            {{ loading ? "載入中…" : "重新載入" }}
-          </button>
-          <button
-            type="button"
-            class="secondary-btn"
-            :disabled="projectsOptionsLoading || loading"
-            @click="projectPickerOpen = true"
-          >
-            選擇專案
-          </button>
-        </div>
+
+      <div
+        v-if="!error"
+        class="header-search"
+      >
+        <label class="project-search-label" for="project-search-input">專案搜尋</label>
+        <input
+          id="project-search-input"
+          v-model="projectSearchQuery"
+          type="search"
+          class="project-search-input"
+          placeholder="輸入關鍵字篩選專案名稱，留空顯示全部"
+          autocomplete="off"
+          spellcheck="false"
+          :disabled="loading"
+        />
+      </div>
+
+      <div class="legend-header">
+        <span class="legend-item">
+          <span class="legend-dot legend-not-started" /> 尚未開始
+        </span>
+        <span class="legend-item">
+          <span class="legend-dot legend-progress" /> 進行中
+        </span>
+        <span class="legend-item">
+          <span class="legend-dot legend-done" /> 已完成
+        </span>
+        <span class="legend-item">
+          <span class="legend-dot legend-behind" /> 落後（一週內截止未完成）
+        </span>
+        <span class="legend-item">
+          <span class="legend-dot legend-at-risk" /> 風險（兩週內截止且逾 1/4 未完成）
+        </span>
+      </div>
+
+      <div class="meta-right">
+        <div class="date-label">日期：{{ todayLabel() }}</div>
+        <button
+          type="button"
+          class="reload-btn"
+          :disabled="loading"
+          @click="loadProgress"
+        >
+          {{ loading ? "載入中…" : "重新載入" }}
+        </button>
+        <button
+          type="button"
+          class="secondary-btn"
+          :disabled="projectsOptionsLoading || loading"
+          @click="projectPickerOpen = true"
+        >
+          選擇專案
+        </button>
       </div>
     </header>
 
@@ -232,9 +259,17 @@ onActivated(() => {
       <div v-else-if="items.length === 0" class="state empty">
         目前沒有可顯示的專案進度。
       </div>
+      <div
+        v-else-if="
+          projectSearchQuery.trim() !== '' && filteredDisplayItems.length === 0
+        "
+        class="state empty"
+      >
+        沒有符合關鍵字的專案。
+      </div>
       <section v-else class="timeline">
         <article
-          v-for="item in displayItems"
+          v-for="item in filteredDisplayItems"
           :key="item.project.gid"
           class="project-row"
         >
@@ -492,13 +527,17 @@ onActivated(() => {
   flex-direction: column;
 }
 .page-header {
-  padding: 16px 24px;
+  padding: 14px 24px 16px;
   background: #fff;
   border-bottom: 1px solid #e5e7eb;
-  display: flex;
+  display: grid;
+  grid-template-columns: auto minmax(200px, 1fr) auto auto;
   align-items: center;
-  justify-content: space-between;
-  gap: 16px;
+  column-gap: 16px;
+  row-gap: 12px;
+}
+.title-block {
+  min-width: 0;
 }
 .title-block h1 {
   margin: 0;
@@ -511,23 +550,69 @@ onActivated(() => {
   font-size: 12px;
   color: #6b7280;
 }
-.meta {
+.header-search {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 12px;
+  gap: 10px;
+  min-width: 0;
+  max-width: 480px;
 }
 .legend-header {
   display: flex;
   flex-wrap: wrap;
-  gap: 12px;
+  align-items: center;
+  gap: 10px 12px;
   font-size: 12px;
   color: #4b5563;
+  justify-content: flex-end;
+  min-width: 0;
 }
 .meta-right {
   display: flex;
   align-items: center;
   gap: 12px;
+  flex-shrink: 0;
+}
+@media (max-width: 1100px) {
+  .page-header {
+    grid-template-columns: 1fr 1fr;
+    grid-template-areas:
+      "title title"
+      "search search"
+      "legend actions";
+  }
+  .title-block {
+    grid-area: title;
+  }
+  .header-search {
+    grid-area: search;
+    max-width: none;
+  }
+  .legend-header {
+    grid-area: legend;
+    justify-content: flex-start;
+  }
+  .meta-right {
+    grid-area: actions;
+    justify-content: flex-end;
+  }
+}
+@media (max-width: 640px) {
+  .page-header {
+    grid-template-columns: 1fr;
+    grid-template-areas:
+      "title"
+      "search"
+      "legend"
+      "actions";
+  }
+  .legend-header {
+    justify-content: flex-start;
+  }
+  .meta-right {
+    flex-wrap: wrap;
+    justify-content: flex-start;
+  }
 }
 .date-label {
   font-size: 12px;
@@ -554,6 +639,37 @@ onActivated(() => {
 .page-main {
   flex: 1;
   padding: 20px 24px 32px;
+}
+.project-search-label {
+  flex: 0 0 auto;
+  font-size: 13px;
+  font-weight: 600;
+  color: #374151;
+  white-space: nowrap;
+}
+.project-search-input {
+  flex: 1;
+  min-width: 0;
+  height: 36px;
+  padding: 0 12px;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  font-size: 13px;
+  color: #111827;
+  background: #fff;
+}
+.project-search-input::placeholder {
+  color: #9ca3af;
+}
+.project-search-input:focus {
+  outline: none;
+  border-color: #6366f1;
+  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.2);
+}
+.project-search-input:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+  background: #f3f4f6;
 }
 .state {
   padding: 40px 0;

@@ -113,6 +113,20 @@ npm run server
 
 瀏覽器開啟 **<http://localhost:5173>**；前端會將 `/api` 等請求轉到後端（見 `vite.config.ts`）。
 
+**單一終端機同時啟動前後端**（專案根目錄執行以讀取 `.env`；`Ctrl+C` 會一併結束兩個程序）：
+
+```bash
+make dev
+```
+
+或：
+
+```bash
+npm run dev:all
+```
+
+需已安裝 **GNU Make**（例如 Git for Windows 內建 `make`）。其餘可用目標見根目錄 `Makefile`（`install`、`frontend`、`backend`、`build`）。
+
 ### 4. 本機建置與預覽
 
 ```bash
