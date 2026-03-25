@@ -3,6 +3,7 @@ import {
   ref,
   computed,
   watch,
+  nextTick,
   onMounted,
   onActivated,
   onUnmounted,
@@ -13,6 +14,7 @@ import {
   type SectionProgress,
   type ProjectProgress,
 } from "@/composables/useProjectProgress";
+import ScrollToTopButton from "@/components/ScrollToTopButton.vue";
 
 const {
   loading,
@@ -31,6 +33,7 @@ const {
   projectBillingFilledCoins,
   projectBillingYearLines,
   selectSection,
+  reloadProjectProgress,
   bootstrapFromStorage,
   syncSelectionFromStorage,
 } = useProjectProgress();
@@ -150,6 +153,11 @@ const forceAllSectionsInUnscheduled = false;
 
 const UNSCHEDULED_KEY = "__unscheduled__";
 const MONTH_BUFFER = 3;
+/** 與 .bytime-col-* CSS 一致，供捲動定位 */
+const BYTIME_PROJECT_COL_W = 220;
+const BYTIME_UNSCHED_EXPANDED_W = 148;
+const BYTIME_UNSCHED_COLLAPSED_W = 80;
+const BYTIME_MONTH_COL_W = 154;
 
 type Ym = { y: number; m: number };
 
@@ -181,6 +189,31 @@ function ymKey(ym: Ym): string {
 function compareYm(a: Ym, b: Ym): number {
   if (a.y !== b.y) return a.y - b.y;
   return a.m - b.m;
+}
+
+function todayYm(): Ym {
+  const now = new Date();
+  return { y: now.getFullYear(), m: now.getMonth() + 1 };
+}
+
+/** 月欄索引：優先當月，否則取時間上最接近的一欄 */
+function indexOfCurrentMonthColumn(cols: MonthColumn[]): number {
+  if (cols.length === 0) return 0;
+  const t = todayYm();
+  const key = ymKey(t);
+  const exact = cols.findIndex((c) => c.key === key);
+  if (exact >= 0) return exact;
+  let best = 0;
+  let bestDist = Infinity;
+  for (let i = 0; i < cols.length; i++) {
+    const c = cols[i]!;
+    const dist = Math.abs((c.y - t.y) * 12 + (c.m - t.m));
+    if (dist < bestDist) {
+      bestDist = dist;
+      best = i;
+    }
+  }
+  return best;
 }
 
 function enumerateMonths(from: Ym, to: Ym): MonthColumn[] {
@@ -309,6 +342,19 @@ function sectionsInCell(
   );
 }
 
+/** 各月欄表頭：目前篩選下，該月欄內 section 總數（跨所有專列加總） */
+const monthColumnSectionCounts = computed(() => {
+  const counts: Record<string, number> = {};
+  for (const col of monthColumns.value) {
+    let n = 0;
+    for (const item of filteredDisplayItems.value) {
+      n += sectionsInCell(item, col.key).length;
+    }
+    counts[col.key] = n;
+  }
+  return counts;
+});
+
 function onRowClick(project: AsanaProject, sp: SectionProgress) {
   if (bytimeDragMoved.value) {
     bytimeDragMoved.value = false;
@@ -334,6 +380,72 @@ const anyProjectLoadingTasks = computed(() =>
 /** false = 未排欄折疊（省寬度），點表頭或列上數字展開 */
 const unschedColumnExpanded = ref(false);
 
+/** 重新載入完成後將橫向捲動對齊「目前月份」欄 */
+const scrollAfterReloadToCurrentMonth = ref(false);
+
+function scrollBytimeToCurrentMonthColumn() {
+  const h = bytimeHeadScrollEl.value;
+  const b = bytimeBodyScrollEl.value;
+  if (!h || !b) return;
+
+  const cols = monthColumns.value;
+  if (cols.length === 0) return;
+
+  const idx = indexOfCurrentMonthColumn(cols);
+  const unschedW = unschedColumnExpanded.value
+    ? BYTIME_UNSCHED_EXPANDED_W
+    : BYTIME_UNSCHED_COLLAPSED_W;
+  const leftGutter = BYTIME_PROJECT_COL_W + unschedW;
+  const colStart = leftGutter + idx * BYTIME_MONTH_COL_W;
+
+  const viewport = h.clientWidth || b.clientWidth;
+  const targetScroll = colStart + BYTIME_MONTH_COL_W / 2 - viewport / 2;
+  const maxScroll = Math.max(0, h.scrollWidth - h.clientWidth);
+  const nextLeft = Math.max(0, Math.min(targetScroll, maxScroll));
+
+  bytimeScrollSyncing.value = true;
+  h.scrollLeft = nextLeft;
+  b.scrollLeft = nextLeft;
+  requestAnimationFrame(() => {
+    bytimeScrollSyncing.value = false;
+  });
+}
+
+function beginReloadAndScrollToCurrentMonth() {
+  scrollAfterReloadToCurrentMonth.value = true;
+  void loadProgress();
+}
+
+watch(
+  () => ({
+    pending: scrollAfterReloadToCurrentMonth.value,
+    done: !loading.value && !anyProjectLoadingTasks.value,
+    n: monthColumns.value.length,
+    showTable:
+      items.value.length > 0 &&
+      !(
+        projectSearchQuery.value.trim() !== "" &&
+        filteredDisplayItems.value.length === 0
+      ),
+  }),
+  (s) => {
+    if (!s.pending || !s.done) return;
+    if (!s.showTable || s.n === 0) {
+      scrollAfterReloadToCurrentMonth.value = false;
+      return;
+    }
+    scrollAfterReloadToCurrentMonth.value = false;
+    nextTick(() => {
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          scrollBytimeToCurrentMonthColumn();
+        });
+      });
+    });
+  },
+  { flush: "post" }
+);
+
 const totalUnscheduledCount = computed(() => {
   let n = 0;
   for (const item of filteredDisplayItems.value) {
@@ -355,11 +467,11 @@ function toggleUnschedColumn() {
 }
 
 onMounted(() => {
-  bootstrapFromStorage();
+  void bootstrapFromStorage();
 });
 
 onActivated(() => {
-  syncSelectionFromStorage();
+  void syncSelectionFromStorage();
 });
 </script>
 
@@ -415,7 +527,7 @@ onActivated(() => {
           type="button"
           class="reload-btn"
           :disabled="loading"
-          @click="loadProgress"
+          @click="beginReloadAndScrollToCurrentMonth"
         >
           {{ loading ? "載入中…" : "重新載入" }}
         </button>
@@ -483,7 +595,7 @@ onActivated(() => {
                   :disabled="loading"
                   @click="
                     projectPickerOpen = false;
-                    loadProgress();
+                    beginReloadAndScrollToCurrentMonth();
                   "
                 >
                   {{ loading ? "載入中…" : "套用選擇" }}
@@ -577,7 +689,19 @@ onActivated(() => {
                     :key="'m-' + col.key"
                     class="th-month"
                   >
-                    {{ col.monthLabel }}
+                    <div class="th-month-inner">
+                      <span class="th-month-label">{{ col.monthLabel }}</span>
+                      <span
+                        class="th-month-count"
+                        :title="
+                          '此月欄共 ' +
+                          (monthColumnSectionCounts[col.key] ?? 0) +
+                          ' 個 section'
+                        "
+                      >
+                        {{ monthColumnSectionCounts[col.key] ?? 0 }}
+                      </span>
+                    </div>
                   </th>
                 </tr>
               </thead>
@@ -615,7 +739,36 @@ onActivated(() => {
               >
                 <th class="sticky-col-project bytime-project-cell">
                   <div class="project-name-text">
-                    <span class="project-name-label">{{ item.project.name }}</span>
+                    <div class="project-title-row">
+                      <span class="project-name-label">{{ item.project.name }}</span>
+                      <button
+                        type="button"
+                        class="project-reload-btn"
+                        :disabled="item.loadingTasks"
+                        :title="item.loadingTasks ? '載入中…' : '重新載入此專案'"
+                        :aria-label="'重新載入專案：' + item.project.name"
+                        @click.stop="reloadProjectProgress(item.project.gid)"
+                      >
+                        <svg
+                          class="project-reload-icon"
+                          xmlns="http://www.w3.org/2000/svg"
+                          width="16"
+                          height="16"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          stroke-width="2"
+                          stroke-linecap="round"
+                          stroke-linejoin="round"
+                          aria-hidden="true"
+                        >
+                          <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" />
+                          <path d="M21 3v5h-5" />
+                          <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16" />
+                          <path d="M8 16H3v5" />
+                        </svg>
+                      </button>
+                    </div>
                     <div
                       v-if="!item.loadingTasks && projectBillingTotal(item) > 0"
                       class="project-billing-years"
@@ -922,6 +1075,8 @@ onActivated(() => {
         </section>
       </div>
     </main>
+
+    <ScrollToTopButton />
   </div>
 </template>
 
@@ -1201,6 +1356,25 @@ onActivated(() => {
   padding: 2px 5px;
   background: #f9fafb;
 }
+.th-month-inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  line-height: 1.2;
+}
+.th-month-label {
+  font-size: 14px;
+  font-weight: 700;
+  color: #4b5563;
+}
+.th-month-count {
+  font-size: 11px;
+  font-weight: 700;
+  color: #6b7280;
+  font-variant-numeric: tabular-nums;
+}
 .sticky-col-project {
   position: sticky;
   left: 0;
@@ -1379,8 +1553,43 @@ onActivated(() => {
   align-items: center;
   gap: 4px;
 }
+.project-title-row {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  max-width: 100%;
+}
 .project-name-label {
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+.project-reload-btn {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: #6b7280;
+  cursor: pointer;
+}
+.project-reload-btn:hover:not(:disabled) {
+  background: #f3f4f6;
+  color: #4f46e5;
+}
+.project-reload-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.project-reload-icon {
+  display: block;
 }
 .project-billing-years {
   display: flex;

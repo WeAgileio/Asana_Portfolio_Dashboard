@@ -5,6 +5,7 @@ import {
   useProjectProgress,
   type SectionProgress,
 } from "@/composables/useProjectProgress";
+import ScrollToTopButton from "@/components/ScrollToTopButton.vue";
 
 const isDraggingTimeline = ref(false);
 const dragStartX = ref(0);
@@ -84,6 +85,7 @@ const {
   projectBillingFilledCoins,
   projectBillingYearLines,
   selectSection,
+  reloadProjectProgress,
   bootstrapFromStorage,
   syncSelectionFromStorage,
 } = useProjectProgress({
@@ -104,11 +106,11 @@ function onSectionClick(
 }
 
 onMounted(() => {
-  bootstrapFromStorage();
+  void bootstrapFromStorage();
 });
 
 onActivated(() => {
-  syncSelectionFromStorage();
+  void syncSelectionFromStorage();
 });
 
 const projectSearchQuery = ref("");
@@ -275,9 +277,38 @@ const filteredDisplayItems = computed(() => {
         >
           <div class="project-name">
             <div class="project-name-text">
-              <span class="project-name-label">
-                {{ item.project.name }}
-              </span>
+              <div class="project-title-row">
+                <span class="project-name-label">
+                  {{ item.project.name }}
+                </span>
+                <button
+                  type="button"
+                  class="project-reload-btn"
+                  :disabled="item.loadingTasks"
+                  :title="item.loadingTasks ? '載入中…' : '重新載入此專案'"
+                  :aria-label="'重新載入專案：' + item.project.name"
+                  @click.stop="reloadProjectProgress(item.project.gid)"
+                >
+                  <svg
+                    class="project-reload-icon"
+                    xmlns="http://www.w3.org/2000/svg"
+                    width="16"
+                    height="16"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    aria-hidden="true"
+                  >
+                    <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" />
+                    <path d="M21 3v5h-5" />
+                    <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16" />
+                    <path d="M8 16H3v5" />
+                  </svg>
+                </button>
+              </div>
               <div
                 v-if="!item.loadingTasks && projectBillingTotal(item) > 0"
                 class="project-billing-years"
@@ -516,6 +547,8 @@ const filteredDisplayItems = computed(() => {
       </div>
 
     </main>
+
+    <ScrollToTopButton />
   </div>
 </template>
 
@@ -709,8 +742,43 @@ const filteredDisplayItems = computed(() => {
   align-items: center;
   gap: 4px;
 }
+.project-title-row {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  max-width: 100%;
+}
 .project-name-label {
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+.project-reload-btn {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: #6b7280;
+  cursor: pointer;
+}
+.project-reload-btn:hover:not(:disabled) {
+  background: #f3f4f6;
+  color: #4f46e5;
+}
+.project-reload-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.project-reload-icon {
+  display: block;
 }
 .project-billing-total {
   font-size: 14px;

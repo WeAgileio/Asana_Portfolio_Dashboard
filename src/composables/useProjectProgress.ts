@@ -155,6 +155,8 @@ const loading = ref(false);
 const error = ref<string | null>(null);
 const items = ref<ProjectProgress[]>([]);
 const loadIdRef = ref(0);
+/** 單一專案重新載入序號，避免連點或舊請求覆寫新結果 */
+const projectReloadSeqByGid = new Map<string, number>();
 
 const displayItems = computed(() =>
   items.value.filter(
@@ -221,14 +223,18 @@ function ensureProgressCoreWatchers() {
   );
 
   watch(
-    () => auth.getTokenHash(),
+    () => auth.tokenHash,
     (hash) => {
-      selectedProjectGids.value = loadSelectedFromLocalStorage();
       if (hash == null) {
+        selectedProjectGids.value = [];
         didBootstrapProgressLoad = false;
+        isFirstLoad.value = true;
         items.value = [];
+        return;
       }
-    }
+      selectedProjectGids.value = loadSelectedFromLocalStorage();
+    },
+    { immediate: true, flush: "post" }
   );
 }
 
@@ -344,6 +350,84 @@ function selectSection(project: AsanaProject, sp: SectionProgress) {
   };
 }
 
+async function reloadProjectProgress(projectGid: string): Promise<void> {
+  const idx = items.value.findIndex((x) => x.project.gid === projectGid);
+  if (idx < 0) return;
+
+  const seq = (projectReloadSeqByGid.get(projectGid) ?? 0) + 1;
+  projectReloadSeqByGid.set(projectGid, seq);
+
+  const snapshot = items.value[idx]!;
+  try {
+    items.value[idx] = {
+      ...snapshot,
+      loadingTasks: true,
+    };
+
+    const sections = await fetchSectionsByProject(projectGid);
+    if (projectReloadSeqByGid.get(projectGid) !== seq) return;
+
+    const existingSectionByGid = new Map(
+      snapshot.sections.map((sp) => [sp.section.gid, sp] as const)
+    );
+    const mergedSections: SectionProgress[] = sections.map(
+      (section) =>
+        existingSectionByGid.get(section.gid) ??
+        calcSectionProgress(section, [])
+    );
+
+    items.value[idx] = {
+      project: snapshot.project,
+      sections: mergedSections,
+      loadingTasks: true,
+    };
+
+    const sectionProgressListRaw = await Promise.all(
+      sections.map(async (section) => {
+        const tasks = await fetchTasksBySection(section.gid);
+        if (section.name === "未命名區段" && tasks.length === 0) {
+          return null as SectionProgress | null;
+        }
+        return calcSectionProgress(section, tasks);
+      })
+    );
+    const sectionProgressList = sectionProgressListRaw.filter(
+      (x): x is SectionProgress => x !== null
+    );
+
+    if (projectReloadSeqByGid.get(projectGid) !== seq) return;
+    const idxAfter = items.value.findIndex((x) => x.project.gid === projectGid);
+    if (idxAfter < 0) return;
+
+    items.value[idxAfter] = {
+      project: snapshot.project,
+      sections: sectionProgressList,
+      loadingTasks: false,
+    };
+
+    nextTick(() => {
+      if (projectReloadSeqByGid.get(projectGid) !== seq) return;
+      projectTasksLoadedListeners.forEach((fn) => {
+        try {
+          fn(projectGid);
+        } catch (e) {
+          console.error(e);
+        }
+      });
+    });
+  } catch (e) {
+    console.error("重新載入專案失敗", e);
+    if (projectReloadSeqByGid.get(projectGid) !== seq) return;
+    const i = items.value.findIndex((x) => x.project.gid === projectGid);
+    if (i >= 0) {
+      items.value[i] = {
+        ...items.value[i]!,
+        loadingTasks: false,
+      };
+    }
+  }
+}
+
 async function loadProgress() {
   loading.value = true;
   error.value = null;
@@ -361,7 +445,10 @@ async function loadProgress() {
         : projectsOptions.value;
 
     if (isFirstLoad.value) {
-      projectsToLoad = projectsToLoad.slice(0, INITIAL_LOAD_LIMIT);
+      // 已勾選特定專案時應一次載入全部勾選；僅在「載入全部」時限制首次筆數
+      if (selectedProjectGids.value.length === 0) {
+        projectsToLoad = projectsToLoad.slice(0, INITIAL_LOAD_LIMIT);
+      }
       isFirstLoad.value = false;
     }
 
@@ -451,14 +538,20 @@ async function loadProgress() {
   }
 }
 
-function bootstrapFromStorage() {
+async function bootstrapFromStorage() {
+  const auth = useAuthStore();
+  await auth.loadFromStorage();
+  if (!auth.getTokenHash()) return;
   selectedProjectGids.value = loadSelectedFromLocalStorage();
   if (didBootstrapProgressLoad) return;
   didBootstrapProgressLoad = true;
   void loadProgress();
 }
 
-function syncSelectionFromStorage() {
+async function syncSelectionFromStorage() {
+  const auth = useAuthStore();
+  await auth.loadFromStorage();
+  if (!auth.getTokenHash()) return;
   selectedProjectGids.value = loadSelectedFromLocalStorage();
 }
 
@@ -496,6 +589,7 @@ export function useProjectProgress(options?: UseProjectProgressOptions) {
     selectedSection,
     refreshProjectsOptions,
     loadProgress,
+    reloadProjectProgress,
     todayLabel,
     projectBillingTotal,
     projectBillingCollectedTotal,
