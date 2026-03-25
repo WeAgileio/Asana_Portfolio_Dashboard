@@ -152,7 +152,7 @@ docker compose up --build
 建置並標籤（範例與 Docker Hub 倉庫一致）。請款欄位需寫進前端時請加 **build-arg**（否則用程式內建預設名稱）：
 
 ```bash
-docker build -t yuminggood/asana_dashboard:latest -t yuminggood/asana_dashboard:1.2.0 \
+docker build -t yuminggood/asana_dashboard:latest -t yuminggood/asana_dashboard:1.3.0 \
   --build-arg VITE_BILLING_FIELD=請款金額 .
 ```
 
@@ -167,7 +167,7 @@ docker buildx build --platform linux/arm64/v8 \
 # 同時建 amd64 + arm64/v8 並推送（推薦給 Docker Hub）
 docker buildx build --platform linux/amd64,linux/arm64/v8 \
   -t yuminggood/asana_dashboard:latest \
-  -t yuminggood/asana_dashboard:1.2.0 \
+  -t yuminggood/asana_dashboard:1.3.0 \
   --build-arg VITE_BILLING_FIELD=請款金額 \
   --push .
 ```
@@ -176,7 +176,7 @@ docker buildx build --platform linux/amd64,linux/arm64/v8 \
 
 ```bash
 docker push yuminggood/asana_dashboard:latest
-docker push yuminggood/asana_dashboard:1.2.0
+docker push yuminggood/asana_dashboard:1.3.0
 ```
 
 單機執行（前後端同一埠 **3001**）：
@@ -236,7 +236,14 @@ docker-compose.prod.yml
 
 ## 版本紀錄
 
-### v1.2.0（目前 `package.json` 版本）
+### v1.3.0（目前 `package.json` 版本）
+
+- **專案進度／進度·時間序**：各專案列標題旁 **單專重新載入**（僅重抓該專案 sections／任務）；兩頁右下角 **回到頂端** 浮動按鈕。
+- **進度·時間序**：月欄表頭顯示該欄 **section 總數**（依目前篩選）；按頂部「重新載入」或選專案套用後，橫向捲動會對齊 **當月** 欄。
+- **修正**：瀏覽器 **重新整理** 後正確還原 **已選專案**（`await loadFromStorage`、`tokenHash` 同步、已勾選專案時不再套用首次僅載入 5 個專案的限制）。
+- **Docker 映像**：`yuminggood/asana_dashboard`（例：`latest`、`1.3.0`）；**linux/amd64** 與 **linux/arm64/v8**（見上文 Docker 章節）。
+
+### v1.2.0
 
 - **專案進度／進度·時間序**：頂部橫列工具列（標題、**專案搜尋**、狀態圖例、日期與按鈕）；關鍵字篩選專案名稱（留空顯示全部）；資料載入中禁用搜尋欄。
 - **進度·時間序**：月欄與未排統計依目前篩選結果計算。
