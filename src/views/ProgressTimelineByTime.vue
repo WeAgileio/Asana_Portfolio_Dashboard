@@ -473,10 +473,10 @@ const scrollAfterReloadToCurrentMonth = ref(false);
 function scrollBytimeToCurrentMonthColumn() {
   const h = bytimeHeadScrollEl.value;
   const b = bytimeBodyScrollEl.value;
-  if (!h || !b) return;
+  if (!h || !b) return false;
 
   const cols = monthColumns.value;
-  if (cols.length === 0) return;
+  if (cols.length === 0) return false;
 
   const idx = indexOfCurrentMonthColumn(cols);
   const unschedW = unschedColumnExpanded.value
@@ -496,11 +496,28 @@ function scrollBytimeToCurrentMonthColumn() {
   requestAnimationFrame(() => {
     bytimeScrollSyncing.value = false;
   });
+  return true;
 }
 
 function beginReloadAndScrollToCurrentMonth() {
   scrollAfterReloadToCurrentMonth.value = true;
   void loadProgress();
+}
+
+function tryScrollToCurrentMonthAfterDataReady(retries = 8) {
+  nextTick(() => {
+    requestAnimationFrame(() => {
+      const ok = scrollBytimeToCurrentMonthColumn();
+      if (ok) {
+        scrollAfterReloadToCurrentMonth.value = false;
+        return;
+      }
+      if (retries <= 0) return;
+      setTimeout(() => {
+        tryScrollToCurrentMonthAfterDataReady(retries - 1);
+      }, 60);
+    });
+  });
 }
 
 watch(
@@ -521,14 +538,8 @@ watch(
       scrollAfterReloadToCurrentMonth.value = false;
       return;
     }
-    scrollAfterReloadToCurrentMonth.value = false;
-    nextTick(() => {
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-          scrollBytimeToCurrentMonthColumn();
-        });
-      });
-    });
+    // 僅在整批資料載完後才滾動，並在 DOM 尚未就緒時短暫重試
+    tryScrollToCurrentMonthAfterDataReady();
   },
   { flush: "post" }
 );
@@ -554,6 +565,8 @@ function toggleUnschedColumn() {
 }
 
 onMounted(() => {
+  // 首次刷新進頁也要在資料載完後對齊當月欄
+  scrollAfterReloadToCurrentMonth.value = true;
   void bootstrapFromStorage();
 });
 
