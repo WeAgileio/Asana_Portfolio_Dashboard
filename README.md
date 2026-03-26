@@ -152,7 +152,7 @@ docker compose up --build
 建置並標籤（範例與 Docker Hub 倉庫一致）。請款欄位需寫進前端時請加 **build-arg**（否則用程式內建預設名稱）：
 
 ```bash
-docker build -t yuminggood/asana_dashboard:latest -t yuminggood/asana_dashboard:1.3.1 \
+docker build -t yuminggood/asana_dashboard:latest -t yuminggood/asana_dashboard:1.3.2 \
   --build-arg VITE_BILLING_FIELD=請款金額 .
 ```
 
@@ -167,7 +167,7 @@ docker buildx build --platform linux/arm64/v8 \
 # 同時建 amd64 + arm64/v8 並推送（推薦給 Docker Hub）
 docker buildx build --platform linux/amd64,linux/arm64/v8 \
   -t yuminggood/asana_dashboard:latest \
-  -t yuminggood/asana_dashboard:1.3.1 \
+  -t yuminggood/asana_dashboard:1.3.2 \
   --build-arg VITE_BILLING_FIELD=請款金額 \
   --push .
 ```
@@ -176,7 +176,7 @@ docker buildx build --platform linux/amd64,linux/arm64/v8 \
 
 ```bash
 docker push yuminggood/asana_dashboard:latest
-docker push yuminggood/asana_dashboard:1.3.1
+docker push yuminggood/asana_dashboard:1.3.2
 ```
 
 單機執行（前後端同一埠 **3001**）：
@@ -236,7 +236,13 @@ docker-compose.prod.yml
 
 ## 版本紀錄
 
-### v1.3.1（目前 `package.json` 版本）
+### v1.3.2（目前 `package.json` 版本）
+
+- **進度·時間序（左側專案欄）**：新增顯示各狀態 section 數（含總數與 0），以文字顏色區分；位置調整回專案名稱區塊。
+- **進度·時間序（未排欄）**：維持原本僅顯示未排總數與展開內容，不拆分狀態。
+- **Docker 映像**：`yuminggood/asana_dashboard`（例：`latest`、`1.3.2`）；**linux/amd64** 與 **linux/arm64/v8**（見上文 Docker 章節）。
+
+### v1.3.1
 
 - **進度·時間序**：月份表頭在「總數」下方，新增顯示各狀態 section 數（含 0），並以文字顏色呈現。
 - **Docker 映像**：`yuminggood/asana_dashboard`（例：`latest`、`1.3.1`）；**linux/amd64** 與 **linux/arm64/v8**（見上文 Docker 章節）。

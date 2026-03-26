@@ -403,6 +403,45 @@ const monthColumnSectionStatusCounts = computed(() => {
   return counts;
 });
 
+/** 左側專案欄：該專案 sections 依狀態統計（含 0） */
+function projectSectionStatusCounts(item: ProjectProgress): {
+  notStarted: number;
+  inProgress: number;
+  done: number;
+  behind: number;
+  atRisk: number;
+} {
+  const out = {
+    notStarted: 0,
+    inProgress: 0,
+    done: 0,
+    behind: 0,
+    atRisk: 0,
+  };
+
+  for (const sp of item.sections) {
+    switch (sp.status) {
+      case "not-started":
+        out.notStarted += 1;
+        break;
+      case "in-progress":
+        out.inProgress += 1;
+        break;
+      case "done":
+        out.done += 1;
+        break;
+      case "behind":
+        out.behind += 1;
+        break;
+      case "at-risk":
+        out.atRisk += 1;
+        break;
+    }
+  }
+
+  return out;
+}
+
 function onRowClick(project: AsanaProject, sp: SectionProgress) {
   if (bytimeDragMoved.value) {
     bytimeDragMoved.value = false;
@@ -912,6 +951,46 @@ onActivated(() => {
                         💰
                       </span>
                     </div>
+
+                    <div class="project-section-status-row" aria-label="各狀態 section 數量">
+                      <span
+                        class="project-section-status-item project-section-status-total"
+                        title="總數"
+                      >
+                        {{ item.sections.length }}
+                      </span>
+                      <span
+                        class="project-section-status-item th-month-status-not-started"
+                        title="尚未開始"
+                      >
+                        {{ projectSectionStatusCounts(item).notStarted }}
+                      </span>
+                      <span
+                        class="project-section-status-item th-month-status-in-progress"
+                        title="進行中"
+                      >
+                        {{ projectSectionStatusCounts(item).inProgress }}
+                      </span>
+                      <span
+                        class="project-section-status-item th-month-status-done"
+                        title="已完成"
+                      >
+                        {{ projectSectionStatusCounts(item).done }}
+                      </span>
+                      <span
+                        class="project-section-status-item th-month-status-behind"
+                        title="落後"
+                      >
+                        {{ projectSectionStatusCounts(item).behind }}
+                      </span>
+                      <span
+                        class="project-section-status-item th-month-status-at-risk"
+                        title="風險"
+                      >
+                        {{ projectSectionStatusCounts(item).atRisk }}
+                      </span>
+                    </div>
+
                   </div>
                 </th>
                 <td
@@ -927,7 +1006,8 @@ onActivated(() => {
                   >
                     <span class="unsched-cell-count">{{ unschedCountFor(item) }}</span>
                   </button>
-                  <template v-else>
+
+                  <template v-if="unschedColumnExpanded">
                     <div
                       v-for="sp in sectionsInCell(item, UNSCHEDULED_KEY)"
                       :key="sp.section.gid"
@@ -1484,6 +1564,25 @@ onActivated(() => {
 }
 .th-month-status-at-risk {
   color: #eab308;
+}
+.project-section-status-row {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px 10px;
+  margin-top: 2px;
+  font-size: 12px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+.project-section-status-item {
+  display: inline-flex;
+  align-items: center;
+  line-height: 1;
+  white-space: nowrap;
+}
+.project-section-status-total {
+  color: #111827;
 }
 .sticky-col-project {
   position: sticky;
