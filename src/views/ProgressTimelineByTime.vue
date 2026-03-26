@@ -355,6 +355,54 @@ const monthColumnSectionCounts = computed(() => {
   return counts;
 });
 
+/** 各月欄表頭：依狀態統計 section 數（含 0），跨所有可見專列加總 */
+const monthColumnSectionStatusCounts = computed(() => {
+  const counts: Record<
+    string,
+    {
+      notStarted: number;
+      inProgress: number;
+      done: number;
+      behind: number;
+      atRisk: number;
+    }
+  > = {};
+
+  for (const col of monthColumns.value) {
+    counts[col.key] = {
+      notStarted: 0,
+      inProgress: 0,
+      done: 0,
+      behind: 0,
+      atRisk: 0,
+    };
+
+    for (const item of filteredDisplayItems.value) {
+      for (const sp of sectionsInCell(item, col.key)) {
+        switch (sp.status) {
+          case "not-started":
+            counts[col.key]!.notStarted += 1;
+            break;
+          case "in-progress":
+            counts[col.key]!.inProgress += 1;
+            break;
+          case "done":
+            counts[col.key]!.done += 1;
+            break;
+          case "behind":
+            counts[col.key]!.behind += 1;
+            break;
+          case "at-risk":
+            counts[col.key]!.atRisk += 1;
+            break;
+        }
+      }
+    }
+  }
+
+  return counts;
+});
+
 function onRowClick(project: AsanaProject, sp: SectionProgress) {
   if (bytimeDragMoved.value) {
     bytimeDragMoved.value = false;
@@ -701,6 +749,38 @@ onActivated(() => {
                       >
                         {{ monthColumnSectionCounts[col.key] ?? 0 }}
                       </span>
+                      <div class="th-month-status-row" aria-label="各狀態 section 數量">
+                        <span
+                          class="th-month-status-item th-month-status-not-started"
+                          title="尚未開始"
+                        >
+                          {{ monthColumnSectionStatusCounts[col.key]?.notStarted ?? 0 }}
+                        </span>
+                        <span
+                          class="th-month-status-item th-month-status-in-progress"
+                          title="進行中"
+                        >
+                          {{ monthColumnSectionStatusCounts[col.key]?.inProgress ?? 0 }}
+                        </span>
+                        <span
+                          class="th-month-status-item th-month-status-done"
+                          title="已完成"
+                        >
+                          {{ monthColumnSectionStatusCounts[col.key]?.done ?? 0 }}
+                        </span>
+                        <span
+                          class="th-month-status-item th-month-status-behind"
+                          title="落後"
+                        >
+                          {{ monthColumnSectionStatusCounts[col.key]?.behind ?? 0 }}
+                        </span>
+                        <span
+                          class="th-month-status-item th-month-status-at-risk"
+                          title="風險"
+                        >
+                          {{ monthColumnSectionStatusCounts[col.key]?.atRisk ?? 0 }}
+                        </span>
+                      </div>
                     </div>
                   </th>
                 </tr>
@@ -1374,6 +1454,36 @@ onActivated(() => {
   font-weight: 700;
   color: #6b7280;
   font-variant-numeric: tabular-nums;
+}
+.th-month-status-row {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px 10px;
+  font-size: 10px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.th-month-status-item {
+  display: inline-flex;
+  align-items: center;
+  line-height: 1;
+  white-space: nowrap;
+}
+.th-month-status-not-started {
+  color: #9ca3af;
+}
+.th-month-status-in-progress {
+  color: #60a5fa;
+}
+.th-month-status-done {
+  color: #22c55e;
+}
+.th-month-status-behind {
+  color: #ef4444;
+}
+.th-month-status-at-risk {
+  color: #eab308;
 }
 .sticky-col-project {
   position: sticky;
