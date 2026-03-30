@@ -15,6 +15,11 @@ import {
   type ProjectProgress,
 } from "@/composables/useProjectProgress";
 import ScrollToTopButton from "@/components/ScrollToTopButton.vue";
+import ProjectSortControl from "@/components/ProjectSortControl.vue";
+import {
+  applyProjectNameSort,
+  type ProjectNameSortOrder,
+} from "@/utils/projectDisplaySort";
 
 const {
   loading,
@@ -39,13 +44,16 @@ const {
 } = useProjectProgress();
 
 const projectSearchQuery = ref("");
+const projectNameSortOrder = ref<ProjectNameSortOrder>("default");
 
 const filteredDisplayItems = computed(() => {
   const q = projectSearchQuery.value.trim().toLowerCase();
-  if (!q) return displayItems.value;
-  return displayItems.value.filter((item) =>
-    item.project.name.toLowerCase().includes(q)
-  );
+  const base = !q
+    ? displayItems.value
+    : displayItems.value.filter((item) =>
+        item.project.name.toLowerCase().includes(q)
+      );
+  return applyProjectNameSort(base, projectNameSortOrder.value);
 });
 
 /** 任務載入中或專案進度重載中時禁止橫向拖曳捲動 */
@@ -579,66 +587,75 @@ onActivated(() => {
   <div class="progress-page">
     <header class="page-header">
       <div class="title-block">
-        <h1>專案進度（時間序）</h1>
-        <p>
-          與「專案進度」共用資料；左欄為專案與請款摘要，右側為<strong>月欄表</strong>。有里程碑截止日的
-          section 對齊該月；無日期或無法對應月欄者集中在<strong>未排</strong>。
+        <h1>專案進度 ( 時間序 )</h1>
+        <p class="title-block-desc">
+          與「專案進度」共用資料；左側為專案與請款摘要，右側為月欄表。有里程碑截止日的 section
+          對齊該月；無日期或無法對應月欄者集中在未排。
         </p>
       </div>
 
       <div
         v-if="!error"
-        class="header-search"
+        class="page-header-center"
       >
-        <label class="project-search-label" for="project-search-bytime-input">專案搜尋</label>
-        <input
-          id="project-search-bytime-input"
-          v-model="projectSearchQuery"
-          type="search"
-          class="project-search-input"
-          placeholder="輸入關鍵字篩選專案名稱，留空顯示全部"
-          autocomplete="off"
-          spellcheck="false"
-          :disabled="loading"
-        />
+        <div class="header-search">
+          <ProjectSortControl v-model="projectNameSortOrder" :disabled="loading" />
+          <span class="header-search-divider" role="separator" aria-hidden="true" />
+          <label class="project-search-label" for="project-search-bytime-input">專案搜尋</label>
+          <input
+            id="project-search-bytime-input"
+            v-model="projectSearchQuery"
+            type="search"
+            class="project-search-input"
+            placeholder="輸入關鍵字篩選專案名稱，留空顯示全部"
+            autocomplete="off"
+            spellcheck="false"
+            :disabled="loading"
+          />
+        </div>
       </div>
 
-      <div class="legend-header">
-        <span class="legend-item">
-          <span class="legend-dot legend-not-started" /> 尚未開始
-        </span>
-        <span class="legend-item">
-          <span class="legend-dot legend-progress" /> 進行中
-        </span>
-        <span class="legend-item">
-          <span class="legend-dot legend-done" /> 已完成
-        </span>
-        <span class="legend-item">
-          <span class="legend-dot legend-behind" /> 落後
-        </span>
-        <span class="legend-item">
-          <span class="legend-dot legend-at-risk" /> 風險
-        </span>
-      </div>
-
-      <div class="meta-right">
-        <div class="date-label">日期：{{ todayLabel() }}</div>
-        <button
-          type="button"
-          class="reload-btn"
-          :disabled="loading"
-          @click="beginReloadAndScrollToCurrentMonth"
-        >
-          {{ loading ? "載入中…" : "重新載入" }}
-        </button>
-        <button
-          type="button"
-          class="secondary-btn"
-          :disabled="projectsOptionsLoading || loading"
-          @click="projectPickerOpen = true"
-        >
-          選擇專案
-        </button>
+      <div class="page-header-right">
+        <div class="legend-header" aria-label="狀態圖例">
+          <div class="legend-row">
+            <span class="legend-item">
+              <span class="legend-dot legend-not-started" /> 尚未開始
+            </span>
+            <span class="legend-item">
+              <span class="legend-dot legend-progress" /> 進行中
+            </span>
+            <span class="legend-item">
+              <span class="legend-dot legend-done" /> 已完成
+            </span>
+          </div>
+          <div class="legend-row">
+            <span class="legend-item">
+              <span class="legend-dot legend-behind" /> 延後（一週內截止未完成）
+            </span>
+            <span class="legend-item">
+              <span class="legend-dot legend-at-risk" /> 風險（兩週內截止且逾 1/4 未完成）
+            </span>
+          </div>
+        </div>
+        <div class="meta-right">
+          <div class="date-label">日期：{{ todayLabel() }}</div>
+          <button
+            type="button"
+            class="reload-btn"
+            :disabled="loading"
+            @click="beginReloadAndScrollToCurrentMonth"
+          >
+            {{ loading ? "載入中…" : "重新載入" }}
+          </button>
+          <button
+            type="button"
+            class="secondary-btn"
+            :disabled="projectsOptionsLoading || loading"
+            @click="projectPickerOpen = true"
+          >
+            選擇專案
+          </button>
+        </div>
       </div>
     </header>
 
@@ -1261,87 +1278,175 @@ onActivated(() => {
   flex-direction: column;
 }
 .page-header {
-  padding: 14px 24px 16px;
+  box-sizing: border-box;
+  min-height: 76px;
+  padding: 8px 20px;
   background: #fff;
   border-bottom: 1px solid #e5e7eb;
-  display: grid;
-  grid-template-columns: auto minmax(200px, 1fr) auto auto;
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
   align-items: center;
-  column-gap: 16px;
-  row-gap: 12px;
+  gap: 12px 20px;
 }
 .title-block {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 10px 14px;
+  flex: 0 1 auto;
   min-width: 0;
+  max-width: min(420px, 36vw);
 }
 .title-block h1 {
   margin: 0;
-  font-size: 18px;
+  font-size: 15px;
   font-weight: 800;
   color: #111827;
+  white-space: nowrap;
+  flex-shrink: 0;
+  line-height: 1.2;
 }
-.title-block p {
-  margin: 4px 0 0;
+.title-block-desc {
+  margin: 0;
   font-size: 12px;
+  line-height: 1.4;
   color: #6b7280;
+  flex: 1 1 auto;
+  min-width: 0;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.page-header-center {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-start;
+  flex: 1 1 320px;
+  min-width: 0;
 }
 .header-search {
   display: flex;
+  flex-direction: row;
   align-items: center;
   gap: 10px;
   min-width: 0;
-  max-width: 480px;
+  width: 100%;
+  max-width: min(600px, 100%);
+}
+.header-search :deep(.project-sort-btn) {
+  height: 32px;
+  padding: 0 10px;
+  font-size: 12px;
+  border-radius: 6px;
+}
+.header-search :deep(.project-sort-glyph--default) {
+  font-size: 13px;
+}
+.header-search :deep(.project-sort-glyph--asc),
+.header-search :deep(.project-sort-glyph--desc) {
+  font-size: 10px;
+}
+.header-search-divider {
+  width: 1px;
+  height: 20px;
+  flex-shrink: 0;
+  background: #d1d5db;
+  align-self: center;
+}
+.header-search .project-search-input {
+  flex: 1 1 200px;
+  min-width: min(100%, 320px);
+}
+.page-header-right {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 12px 16px;
+  flex-shrink: 0;
+  margin-left: auto;
 }
 .legend-header {
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 10px 12px;
+  flex-direction: column;
+  justify-content: center;
+  gap: 3px;
   font-size: 12px;
+  line-height: 1.35;
   color: #4b5563;
-  justify-content: flex-end;
-  min-width: 0;
+}
+.legend-row {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 6px 10px;
+}
+.page-header-right .legend-dot {
+  width: 11px;
+  height: 11px;
 }
 .meta-right {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
   flex-shrink: 0;
 }
-@media (max-width: 1100px) {
+@media (min-width: 1200px) {
+  .title-block {
+    flex: 0 0 400px;
+    min-width: 400px;
+    max-width: 400px;
+  }
+}
+@media (max-width: 1199px) {
   .page-header {
-    grid-template-columns: 1fr 1fr;
-    grid-template-areas:
-      "title title"
-      "search search"
-      "legend actions";
+    flex-wrap: wrap;
+    min-height: 0;
+    padding: 10px 16px;
   }
   .title-block {
-    grid-area: title;
-  }
-  .header-search {
-    grid-area: search;
     max-width: none;
+    flex: 1 1 100%;
+    min-width: 0;
   }
-  .legend-header {
-    grid-area: legend;
+  .page-header-center {
+    flex: 1 1 100%;
     justify-content: flex-start;
   }
-  .meta-right {
-    grid-area: actions;
-    justify-content: flex-end;
+  .page-header-right {
+    margin-left: 0;
+    flex: 1 1 100%;
+    flex-wrap: wrap;
+    justify-content: space-between;
   }
 }
 @media (max-width: 640px) {
-  .page-header {
-    grid-template-columns: 1fr;
-    grid-template-areas:
-      "title"
-      "search"
-      "legend"
-      "actions";
+  .title-block {
+    flex-direction: column;
+    align-items: flex-start;
   }
-  .legend-header {
-    justify-content: flex-start;
+  .title-block h1 {
+    white-space: normal;
+  }
+  .title-block-desc {
+    -webkit-line-clamp: 5;
+  }
+  .header-search {
+    flex-wrap: wrap;
+  }
+  .header-search .project-search-input {
+    flex-basis: 140px;
+    flex-grow: 1;
+    min-width: 0;
+  }
+  .legend-row {
+    flex-wrap: wrap;
+  }
+  .page-header-right {
+    flex-direction: column;
+    align-items: stretch;
   }
   .meta-right {
     flex-wrap: wrap;
@@ -1350,7 +1455,7 @@ onActivated(() => {
 }
 .project-search-label {
   flex: 0 0 auto;
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 600;
   color: #374151;
   white-space: nowrap;
@@ -1358,11 +1463,11 @@ onActivated(() => {
 .project-search-input {
   flex: 1;
   min-width: 0;
-  height: 36px;
-  padding: 0 12px;
+  height: 32px;
+  padding: 0 10px;
   border: 1px solid #d1d5db;
-  border-radius: 8px;
-  font-size: 13px;
+  border-radius: 6px;
+  font-size: 12px;
   color: #111827;
   background: #fff;
 }
@@ -1382,11 +1487,12 @@ onActivated(() => {
 .date-label {
   font-size: 12px;
   color: #4b5563;
+  white-space: nowrap;
 }
 .reload-btn {
-  height: 32px;
-  padding: 0 12px;
-  border-radius: 8px;
+  height: 30px;
+  padding: 0 10px;
+  border-radius: 6px;
   border: none;
   background: #4f46e5;
   color: #fff;
@@ -1400,6 +1506,12 @@ onActivated(() => {
 }
 .reload-btn:not(:disabled):hover {
   background: #4338ca;
+}
+.page-header .secondary-btn {
+  height: 30px;
+  padding: 0 10px;
+  border-radius: 6px;
+  font-weight: 600;
 }
 .page-main {
   flex: 1;
