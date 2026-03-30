@@ -152,7 +152,7 @@ docker compose up --build
 建置並標籤（範例與 Docker Hub 倉庫一致）。請款欄位需寫進前端時請加 **build-arg**（否則用程式內建預設名稱）：
 
 ```bash
-docker build -t yuminggood/asana_dashboard:latest -t yuminggood/asana_dashboard:1.4.0 \
+docker build -t yuminggood/asana_dashboard:latest -t yuminggood/asana_dashboard:1.4.1 \
   --build-arg VITE_BILLING_FIELD=請款金額 .
 ```
 
@@ -167,7 +167,7 @@ docker buildx build --platform linux/arm64/v8 \
 # 同時建 amd64 + arm64/v8 並推送（推薦給 Docker Hub）
 docker buildx build --platform linux/amd64,linux/arm64/v8 \
   -t yuminggood/asana_dashboard:latest \
-  -t yuminggood/asana_dashboard:1.4.0 \
+  -t yuminggood/asana_dashboard:1.4.1 \
   --build-arg VITE_BILLING_FIELD=請款金額 \
   --push .
 ```
@@ -176,7 +176,7 @@ docker buildx build --platform linux/amd64,linux/arm64/v8 \
 
 ```bash
 docker push yuminggood/asana_dashboard:latest
-docker push yuminggood/asana_dashboard:1.4.0
+docker push yuminggood/asana_dashboard:1.4.1
 ```
 
 單機執行（前後端同一埠 **3001**）：
@@ -186,6 +186,18 @@ docker run -p 3001:3001 --env-file .env yuminggood/asana_dashboard:latest
 ```
 
 瀏覽器：<http://localhost:3001>
+
+### GitHub Release 後自動推送 Docker Hub
+
+建立 **GitHub Release** 並**發佈**（`published`）時，會執行 [`.github/workflows/docker-publish.yml`](.github/workflows/docker-publish.yml)：以 **buildx** 建置 **linux/amd64** 與 **linux/arm64/v8**，並推送 **`yuminggood/asana_dashboard:latest`**、**發佈標籤**（若標籤為 `v1.x.x` 會另推送 **`1.x.x`**）。
+
+請在儲存庫 **Settings → Secrets and variables → Actions** 設定：
+
+| Secret | 說明 |
+|--------|------|
+| `DOCKERHUB_USERNAME` | Docker Hub 帳號（與映像前綴一致，例如 `yuminggood`） |
+| `DOCKERHUB_TOKEN` | Docker Hub [Access Token](https://docs.docker.com/security/for-developers/access-tokens/)（勿用一般登入密碼） |
+| `VITE_BILLING_FIELD` | **選用。** 與本機 `--build-arg VITE_BILLING_FIELD=…` 相同，寫入前端建置 |
 
 ### 正式環境 Compose（`docker-compose.prod.yml`）
 
@@ -221,6 +233,7 @@ src/
 ├── App.vue                   # 頂部導覽與分頁
 └── main.ts
 
+.github/workflows/            # CI（Release 後推送 Docker Hub 等）
 Dockerfile                    # 生產多階段建置
 Dockerfile.dev                # 開發用基底（搭配 compose）
 docker-compose.yml
@@ -236,7 +249,12 @@ docker-compose.prod.yml
 
 ## 版本紀錄
 
-### v1.4.0（目前 `package.json` 版本）
+### v1.4.1（目前 `package.json` 版本）
+
+- **CI**：新增 [`.github/workflows/docker-publish.yml`](.github/workflows/docker-publish.yml)，於 **GitHub Release 發佈**後以 **buildx** 建置 **linux/amd64**、**linux/arm64/v8** 並推送 **Docker Hub**（`latest`、Release 標籤等）；需於儲存庫設定 `DOCKERHUB_USERNAME`、`DOCKERHUB_TOKEN`（選用 `VITE_BILLING_FIELD`）。說明見上文「GitHub Release 後自動推送 Docker Hub」。
+- **Docker 映像**：`yuminggood/asana_dashboard`（例：`latest`、`1.4.1`）；**linux/amd64** 與 **linux/arm64/v8**（見上文 Docker 章節）。
+
+### v1.4.0
 
 - **專案進度／進度·時間序**：表頭 **依專案名稱排序**（`ProjectSortControl`：Asana 原始順序／遞增／遞減，中文以 `zh-Hant` 比對）；**搜尋與排序**橫列、加寬搜尋框以顯示完整 placeholder。
 - **表頭版面**：左側標題＋說明、中間排序與搜尋、右側雙列狀態圖例與日期／按鈕；兩頁 **欄位對齊**（寬螢幕左欄固定寬度、中欄靠左對齊）。
