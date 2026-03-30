@@ -1292,11 +1292,11 @@ onActivated(() => {
 .title-block {
   display: flex;
   flex-direction: row;
-  align-items: center;
+  align-items: flex-start;
   gap: 10px 14px;
   flex: 0 1 auto;
   min-width: 0;
-  max-width: min(420px, 36vw);
+  max-width: min(480px, 40vw);
 }
 .title-block h1 {
   margin: 0;
@@ -1395,9 +1395,19 @@ onActivated(() => {
 }
 @media (min-width: 1200px) {
   .title-block {
-    flex: 0 0 400px;
-    min-width: 400px;
-    max-width: 400px;
+    flex: 0 0 480px;
+    min-width: 480px;
+    max-width: 480px;
+  }
+  .title-block-desc {
+    display: block;
+    -webkit-line-clamp: unset;
+    -webkit-box-orient: unset;
+    overflow: visible;
+  }
+  .page-header-center {
+    margin-left: 20px;
+    padding-left: 4px;
   }
 }
 @media (max-width: 1199px) {

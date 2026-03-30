@@ -152,7 +152,7 @@ docker compose up --build
 建置並標籤（範例與 Docker Hub 倉庫一致）。請款欄位需寫進前端時請加 **build-arg**（否則用程式內建預設名稱）：
 
 ```bash
-docker build -t yuminggood/asana_dashboard:latest -t yuminggood/asana_dashboard:1.4.1 \
+docker build -t yuminggood/asana_dashboard:latest -t yuminggood/asana_dashboard:1.4.2 \
   --build-arg VITE_BILLING_FIELD=請款金額 .
 ```
 
@@ -167,7 +167,7 @@ docker buildx build --platform linux/arm64/v8 \
 # 同時建 amd64 + arm64/v8 並推送（推薦給 Docker Hub）
 docker buildx build --platform linux/amd64,linux/arm64/v8 \
   -t yuminggood/asana_dashboard:latest \
-  -t yuminggood/asana_dashboard:1.4.1 \
+  -t yuminggood/asana_dashboard:1.4.2 \
   --build-arg VITE_BILLING_FIELD=請款金額 \
   --push .
 ```
@@ -176,7 +176,7 @@ docker buildx build --platform linux/amd64,linux/arm64/v8 \
 
 ```bash
 docker push yuminggood/asana_dashboard:latest
-docker push yuminggood/asana_dashboard:1.4.1
+docker push yuminggood/asana_dashboard:1.4.2
 ```
 
 單機執行（前後端同一埠 **3001**）：
@@ -249,7 +249,12 @@ docker-compose.prod.yml
 
 ## 版本紀錄
 
-### v1.4.1（目前 `package.json` 版本）
+### v1.4.2（目前 `package.json` 版本）
+
+- **專案進度／進度·時間序**：表頭左欄加寬（寬螢幕 **480px**），說明文字在 **≥1200px** 可**完整換行顯示**（取消行數裁切）；排序與搜尋區略**右移**（與左欄間距）；兩頁樣式一致。
+- **Docker 映像**：`yuminggood/asana_dashboard`（例：`latest`、`1.4.2`）；**linux/amd64** 與 **linux/arm64/v8**（見上文 Docker 章節）。
+
+### v1.4.1
 
 - **CI**：新增 [`.github/workflows/docker-publish.yml`](.github/workflows/docker-publish.yml)，於 **GitHub Release 發佈**後以 **buildx** 建置 **linux/amd64**、**linux/arm64/v8** 並推送 **Docker Hub**（`latest`、Release 標籤等）；需於儲存庫設定 `DOCKERHUB_USERNAME`、`DOCKERHUB_TOKEN`（選用 `VITE_BILLING_FIELD`）。說明見上文「GitHub Release 後自動推送 Docker Hub」。
 - **Docker 映像**：`yuminggood/asana_dashboard`（例：`latest`、`1.4.1`）；**linux/amd64** 與 **linux/arm64/v8**（見上文 Docker 章節）。
