@@ -152,7 +152,7 @@ docker compose up --build
 建置並標籤（範例與 Docker Hub 倉庫一致）。請款欄位需寫進前端時請加 **build-arg**（否則用程式內建預設名稱）：
 
 ```bash
-docker build -t yuminggood/asana_dashboard:latest -t yuminggood/asana_dashboard:1.3.3 \
+docker build -t yuminggood/asana_dashboard:latest -t yuminggood/asana_dashboard:1.4.0 \
   --build-arg VITE_BILLING_FIELD=請款金額 .
 ```
 
@@ -167,7 +167,7 @@ docker buildx build --platform linux/arm64/v8 \
 # 同時建 amd64 + arm64/v8 並推送（推薦給 Docker Hub）
 docker buildx build --platform linux/amd64,linux/arm64/v8 \
   -t yuminggood/asana_dashboard:latest \
-  -t yuminggood/asana_dashboard:1.3.2 \
+  -t yuminggood/asana_dashboard:1.4.0 \
   --build-arg VITE_BILLING_FIELD=請款金額 \
   --push .
 ```
@@ -176,7 +176,7 @@ docker buildx build --platform linux/amd64,linux/arm64/v8 \
 
 ```bash
 docker push yuminggood/asana_dashboard:latest
-docker push yuminggood/asana_dashboard:1.3.3
+docker push yuminggood/asana_dashboard:1.4.0
 ```
 
 單機執行（前後端同一埠 **3001**）：
@@ -236,7 +236,14 @@ docker-compose.prod.yml
 
 ## 版本紀錄
 
-### v1.3.3（目前 `package.json` 版本）
+### v1.4.0（目前 `package.json` 版本）
+
+- **專案進度／進度·時間序**：表頭 **依專案名稱排序**（`ProjectSortControl`：Asana 原始順序／遞增／遞減，中文以 `zh-Hant` 比對）；**搜尋與排序**橫列、加寬搜尋框以顯示完整 placeholder。
+- **表頭版面**：左側標題＋說明、中間排序與搜尋、右側雙列狀態圖例與日期／按鈕；兩頁 **欄位對齊**（寬螢幕左欄固定寬度、中欄靠左對齊）。
+- **圖例**：紅色狀態文案為 **延後**（含括號說明）。
+- **Docker 映像**：`yuminggood/asana_dashboard`（例：`latest`、`1.4.0`）；**linux/amd64** 與 **linux/arm64/v8**（見上文 Docker 章節）。
+
+### v1.3.3
 
 - **進度·時間序**：修正「重新載入／重新整理後對齊當月欄」的橫向捲動時機；資料載入完成後以短重試確保 DOM 就緒再捲動，首次進頁亦在載入完成後對齊。
 - **Docker 映像**：`yuminggood/asana_dashboard`（例：`latest`、`1.3.3`）；**linux/amd64** 與 **linux/arm64/v8**（見上文 Docker 章節）。
