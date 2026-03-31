@@ -45,15 +45,15 @@ const {
 
 const projectSearchQuery = ref("");
 const projectNameSortOrder = ref<ProjectNameSortOrder>("default");
+/** 點擊月欄表頭後，將該月欄內有 section 的專案列排到最上（再點同一欄取消） */
+const prioritizeMonthKey = ref<string | null>(null);
 
-const filteredDisplayItems = computed(() => {
+const searchFilteredDisplayItems = computed(() => {
   const q = projectSearchQuery.value.trim().toLowerCase();
-  const base = !q
-    ? displayItems.value
-    : displayItems.value.filter((item) =>
-        item.project.name.toLowerCase().includes(q)
-      );
-  return applyProjectNameSort(base, projectNameSortOrder.value);
+  if (!q) return displayItems.value;
+  return displayItems.value.filter((item) =>
+    item.project.name.toLowerCase().includes(q)
+  );
 });
 
 /** 僅在整批初始載入（loading）時禁止橫向拖曳；單專案任務載入時不鎖全表（與專案進度頁一致） */
@@ -255,7 +255,7 @@ function sectionLatestTaskCreatedMs(sp: SectionProgress): number {
 
 const monthColumns = computed((): MonthColumn[] => {
   const bounds: Ym[] = [];
-  for (const item of filteredDisplayItems.value) {
+  for (const item of searchFilteredDisplayItems.value) {
     for (const sp of item.sections) {
       if (!sp.latestMilestoneDueOn) continue;
       const ym = parseDueToYm(sp.latestMilestoneDueOn);
@@ -331,7 +331,7 @@ function buildBucketMap(item: ProjectProgress): Map<string, SectionProgress[]> {
 
 const cellBucketsByProjectGid = computed(() => {
   const out = new Map<string, Map<string, SectionProgress[]>>();
-  for (const item of filteredDisplayItems.value) {
+  for (const item of searchFilteredDisplayItems.value) {
     out.set(item.project.gid, buildBucketMap(item));
   }
   return out;
@@ -346,12 +346,70 @@ function sectionsInCell(
   );
 }
 
+/**
+ * 點月欄後，該月有 section 的專案列：延後(紅) > 風險(黃) > 其餘；
+ * 同層再依該月欄內「里程碑截止日」越早越上。
+ */
+function monthColumnSortKeyForItem(
+  item: ProjectProgress,
+  monthKey: string
+): { has: boolean; tier: number; earliestDueMs: number } {
+  const sections = sectionsInCell(item, monthKey);
+  if (sections.length === 0) {
+    return { has: false, tier: 99, earliestDueMs: 0 };
+  }
+  const hasBehind = sections.some((s) => s.status === "behind");
+  const hasAtRisk = sections.some((s) => s.status === "at-risk");
+  let tier: number;
+  if (hasBehind) tier = 0;
+  else if (hasAtRisk) tier = 1;
+  else tier = 2;
+
+  let earliestDueMs = Infinity;
+  for (const s of sections) {
+    if (!s.latestMilestoneDueOn) continue;
+    const ms = new Date(s.latestMilestoneDueOn).getTime();
+    if (Number.isFinite(ms) && ms < earliestDueMs) earliestDueMs = ms;
+  }
+  return { has: true, tier, earliestDueMs };
+}
+
+const filteredDisplayItems = computed(() => {
+  const nameSorted = applyProjectNameSort(
+    [...searchFilteredDisplayItems.value],
+    projectNameSortOrder.value
+  );
+  const key = prioritizeMonthKey.value;
+  if (!key) return nameSorted;
+
+  const scored = nameSorted.map((item, idx) => {
+    const meta = monthColumnSortKeyForItem(item, key);
+    return {
+      item,
+      idx,
+      has: meta.has,
+      tier: meta.tier,
+      earliestDueMs: meta.earliestDueMs,
+    };
+  });
+  scored.sort((a, b) => {
+    if (a.has !== b.has) return a.has ? -1 : 1;
+    if (!a.has) return a.idx - b.idx;
+    if (a.tier !== b.tier) return a.tier - b.tier;
+    if (a.earliestDueMs !== b.earliestDueMs) {
+      return a.earliestDueMs - b.earliestDueMs;
+    }
+    return a.idx - b.idx;
+  });
+  return scored.map((x) => x.item);
+});
+
 /** 各月欄表頭：目前篩選下，該月欄內 section 總數（跨所有專列加總） */
 const monthColumnSectionCounts = computed(() => {
   const counts: Record<string, number> = {};
   for (const col of monthColumns.value) {
     let n = 0;
-    for (const item of filteredDisplayItems.value) {
+    for (const item of searchFilteredDisplayItems.value) {
       n += sectionsInCell(item, col.key).length;
     }
     counts[col.key] = n;
@@ -381,7 +439,7 @@ const monthColumnSectionStatusCounts = computed(() => {
       atRisk: 0,
     };
 
-    for (const item of filteredDisplayItems.value) {
+    for (const item of searchFilteredDisplayItems.value) {
       for (const sp of sectionsInCell(item, col.key)) {
         switch (sp.status) {
           case "not-started":
@@ -453,6 +511,20 @@ function onRowClick(project: AsanaProject, sp: SectionProgress) {
   }
   selectSection(project, sp);
 }
+
+function onMonthColumnHeaderClick(col: MonthColumn) {
+  // 橫向拖曳捲動結束後 bytimeDragMoved 仍可能為 true（下次 mousedown 若發在月欄內有 .stop，捲動層不會重設）。
+  // 點月欄是新操作，應清除，否則後續點「有資料的月份」會被誤擋。
+  bytimeDragMoved.value = false;
+  prioritizeMonthKey.value =
+    prioritizeMonthKey.value === col.key ? null : col.key;
+}
+
+watch(monthColumns, (cols) => {
+  const k = prioritizeMonthKey.value;
+  if (!k) return;
+  if (!cols.some((c) => c.key === k)) prioritizeMonthKey.value = null;
+});
 
 /** 卡片外顯示：里程碑最晚截止日（與格內排序依據一致） */
 function formatSectionDueOnDisplay(sp: SectionProgress): string {
@@ -591,7 +663,8 @@ onActivated(() => {
         <h1>專案進度 ( 時間序 )</h1>
         <p class="title-block-desc">
           與「專案進度」共用資料；左側為專案與請款摘要，右側為月欄表。有里程碑截止日的 section
-          對齊該月；無日期或無法對應月欄者集中在未排。
+          對齊該月；無日期或無法對應月欄者集中在未排。點月欄表頭可將該月有內容的專案列排到最上（再點同一欄取消）：
+          該月內優先「延後」→「風險」→其餘，再依該月欄內截止日越早越上。
         </p>
       </div>
 
@@ -814,7 +887,19 @@ onActivated(() => {
                   <th
                     v-for="col in monthColumns"
                     :key="'m-' + col.key"
-                    class="th-month"
+                    class="th-month th-month--sortable"
+                    :class="{ 'th-month--prioritized': prioritizeMonthKey === col.key }"
+                    role="button"
+                    tabindex="0"
+                    :title="
+                      '點擊：該月有內容的專案列排到最上（延後→風險→其餘，再依截止日）；再點同一欄取消。' +
+                      (monthColumnSectionCounts[col.key] ?? 0) +
+                      ' 個 section'
+                    "
+                    @mousedown.stop
+                    @click.stop="onMonthColumnHeaderClick(col)"
+                    @keydown.enter.prevent="onMonthColumnHeaderClick(col)"
+                    @keydown.space.prevent="onMonthColumnHeaderClick(col)"
                   >
                     <div class="th-month-inner">
                       <span class="th-month-label">{{ col.monthLabel }}</span>
@@ -1704,6 +1789,20 @@ onActivated(() => {
   justify-content: center;
   gap: 2px;
   line-height: 1.2;
+}
+.bytime-head-month .th-month.th-month--sortable {
+  cursor: pointer;
+  outline: none;
+  border-radius: 6px;
+}
+.bytime-head-month .th-month.th-month--sortable:hover {
+  background: rgba(79, 70, 229, 0.07);
+}
+.bytime-head-month .th-month.th-month--sortable:focus-visible {
+  box-shadow: inset 0 0 0 2px rgba(99, 102, 241, 0.45);
+}
+.bytime-head-month .th-month.th-month--prioritized {
+  background: rgba(79, 70, 229, 0.12);
 }
 .th-month-label {
   font-size: 14px;

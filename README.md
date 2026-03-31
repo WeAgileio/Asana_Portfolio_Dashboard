@@ -152,7 +152,7 @@ docker compose up --build
 建置並標籤（範例與 Docker Hub 倉庫一致）。請款欄位需寫進前端時請加 **build-arg**（否則用程式內建預設名稱）：
 
 ```bash
-docker build -t yuminggood/asana_dashboard:latest -t yuminggood/asana_dashboard:1.5.0 \
+docker build -t yuminggood/asana_dashboard:latest -t yuminggood/asana_dashboard:1.6.0 \
   --build-arg VITE_BILLING_FIELD=請款金額 .
 ```
 
@@ -167,7 +167,7 @@ docker buildx build --platform linux/arm64/v8 \
 # 同時建 amd64 + arm64/v8 並推送（推薦給 Docker Hub）
 docker buildx build --platform linux/amd64,linux/arm64/v8 \
   -t yuminggood/asana_dashboard:latest \
-  -t yuminggood/asana_dashboard:1.5.0 \
+  -t yuminggood/asana_dashboard:1.6.0 \
   --build-arg VITE_BILLING_FIELD=請款金額 \
   --push .
 ```
@@ -176,7 +176,7 @@ docker buildx build --platform linux/amd64,linux/arm64/v8 \
 
 ```bash
 docker push yuminggood/asana_dashboard:latest
-docker push yuminggood/asana_dashboard:1.5.0
+docker push yuminggood/asana_dashboard:1.6.0
 ```
 
 單機執行（前後端同一埠 **3001**）：
@@ -249,7 +249,12 @@ docker-compose.prod.yml
 
 ## 版本紀錄
 
-### v1.5.0（目前 `package.json` 版本）
+### v1.6.0（目前 `package.json` 版本）
+
+- **進度·時間序**：點**月欄表頭**可將該月有內容的專案列排到最上（再點同一欄取消）；該月內排序為 **延後（紅）→ 風險（黃）→ 其餘**，同層再依該月欄內**里程碑截止日最早**者在上；可點區為整格表頭。修正橫向拖曳後**再點月欄無效**（清除拖曳旗標）。
+- **Docker 映像**：`yuminggood/asana_dashboard`（例：`latest`、`1.6.0`）；**linux/amd64** 與 **linux/arm64/v8**（見上文 Docker 章節）。
+
+### v1.5.0
 
 - **後端**：`GET /api/*` 代理**記憶體快取**（依使用者隔離、分級 TTL、可略過）；`docker-compose` 可 `env_file: .env`；`Dockerfile`／`Dockerfile.dev` 內建 `ASANA_PROXY_CACHE_*` 預設值。
 - **前端**：表頭「重新同步數據」與單專案重新載入會**略過代理快取**；進度·時間序任務載入改為**依專案列遮罩**（非整表），並修正橫向捲動時**專案／未排** sticky 欄被誤設為 `position: relative` 的問題。
