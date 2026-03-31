@@ -186,6 +186,5 @@ feat: 新增了新功能（description 勿用大寫開頭、勿用過去式）
   1. 整理版本內容（必要時更新 `README.md` 版本紀錄／`package.json` 版本號）。
   2. Git 發版：`git pull` → `commit` → 建立並推送 **annotated tag**（例如 `v1.2.0`，與 `package.json` 一致）→ `push` / `push --tags`。
   3. **GitHub Release**：在標籤已於遠端存在後，使用 **`gh release create <tag>`** 建立 Release（標題可用版本號；內文優先自 `README.md` 該版條目整理，與 README 一致）。若本機無 `gh` 或未登入，須向使用者說明並改請其於網頁建立，或協助安裝／登入後再執行；**不可略過此步**（除非使用者當下明確表示不要 GitHub Release）。
-- **Docker 映像推送**（本機 `docker buildx` 或 CI）**不列入**預設「發版」必做步驟；若使用者另外要求再執行（並參考 `README.md`／`.github/workflows` 若專案已設定自動推送）。
 - 若任一步驟缺少必要資訊（例如版本號、tag 命名規則），先向使用者確認；若資訊齊全則直接完整執行到 **git、GitHub Release** 發布完成。
 
