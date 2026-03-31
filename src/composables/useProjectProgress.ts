@@ -4,6 +4,8 @@ import {
   fetchProjects,
   fetchSectionsByProject,
   fetchTasksBySection,
+  popAsanaProxyCacheBypass,
+  pushAsanaProxyCacheBypass,
 } from "@/api/asana";
 import type { AsanaProject, AsanaSection, AsanaTask } from "@/types/asana";
 
@@ -350,9 +352,14 @@ function selectSection(project: AsanaProject, sp: SectionProgress) {
   };
 }
 
-async function reloadProjectProgress(projectGid: string): Promise<void> {
+async function reloadProjectProgress(
+  projectGid: string,
+  options?: { bypassProxyCache?: boolean }
+): Promise<void> {
   const idx = items.value.findIndex((x) => x.project.gid === projectGid);
   if (idx < 0) return;
+
+  if (options?.bypassProxyCache) pushAsanaProxyCacheBypass();
 
   const seq = (projectReloadSeqByGid.get(projectGid) ?? 0) + 1;
   projectReloadSeqByGid.set(projectGid, seq);
@@ -425,10 +432,19 @@ async function reloadProjectProgress(projectGid: string): Promise<void> {
         loadingTasks: false,
       };
     }
+  } finally {
+    if (options?.bypassProxyCache) popAsanaProxyCacheBypass();
   }
 }
 
-async function loadProgress() {
+export type LoadProgressOptions = {
+  /** 為 true 時請求帶 Cache-Control: no-cache，略過後端 /api 代理快取 */
+  bypassProxyCache?: boolean;
+};
+
+async function loadProgress(options?: LoadProgressOptions) {
+  if (options?.bypassProxyCache) pushAsanaProxyCacheBypass();
+
   loading.value = true;
   error.value = null;
   loadIdRef.value += 1;
@@ -479,7 +495,7 @@ async function loadProgress() {
       };
     });
 
-    projectSectionList.forEach(({ project, sections }) => {
+    const taskPromises = projectSectionList.map(({ project, sections }) =>
       (async () => {
         try {
           const sectionProgressListRaw = await Promise.all(
@@ -523,8 +539,9 @@ async function loadProgress() {
             };
           }
         }
-      })();
-    });
+      })()
+    );
+    await Promise.all(taskPromises);
 
     if (projectsToLoad.length === 0) {
       items.value = [];
@@ -535,6 +552,7 @@ async function loadProgress() {
     error.value = "載入專案進度失敗，請稍後重試。";
   } finally {
     loading.value = false;
+    if (options?.bypassProxyCache) popAsanaProxyCacheBypass();
   }
 }
 

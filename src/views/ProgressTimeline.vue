@@ -191,9 +191,18 @@ const filteredDisplayItems = computed(() => {
             type="button"
             class="reload-btn"
             :disabled="loading"
-            @click="loadProgress"
+            @click="loadProgress()"
           >
             {{ loading ? "載入中…" : "重新載入" }}
+          </button>
+          <button
+            type="button"
+            class="resync-btn"
+            :disabled="loading"
+            title="略過伺服器快取，向 Asana 重新拉取最新資料"
+            @click="loadProgress({ bypassProxyCache: true })"
+          >
+            {{ loading ? "載入中…" : "重新同步數據" }}
           </button>
           <button
             type="button"
@@ -304,9 +313,17 @@ const filteredDisplayItems = computed(() => {
                   type="button"
                   class="project-reload-btn"
                   :disabled="item.loadingTasks"
-                  :title="item.loadingTasks ? '載入中…' : '重新載入此專案'"
+                  :title="
+                    item.loadingTasks
+                      ? '載入中…'
+                      : '重新載入此專案（略過快取，向 Asana 取最新）'
+                  "
                   :aria-label="'重新載入專案：' + item.project.name"
-                  @click.stop="reloadProjectProgress(item.project.gid)"
+                  @click.stop="
+                    reloadProjectProgress(item.project.gid, {
+                      bypassProxyCache: true,
+                    })
+                  "
                 >
                   <svg
                     class="project-reload-icon"
@@ -786,6 +803,25 @@ const filteredDisplayItems = computed(() => {
 }
 .reload-btn:not(:disabled):hover {
   background: #4338ca;
+}
+.resync-btn {
+  height: 30px;
+  padding: 0 10px;
+  border-radius: 6px;
+  border: 1px solid #0d9488;
+  background: #fff;
+  color: #0f766e;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.resync-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+.resync-btn:not(:disabled):hover {
+  background: #f0fdfa;
+  border-color: #0f766e;
 }
 .page-header .secondary-btn {
   height: 30px;

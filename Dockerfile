@@ -19,6 +19,12 @@ FROM --platform=$TARGETPLATFORM node:20-alpine AS runner
 WORKDIR /app
 
 ENV NODE_ENV=production
+# 後端 GET /api/* 代理快取（毫秒）；docker run --env-file .env 或 -e 可覆寫
+ENV ASANA_PROXY_CACHE_LIST_MS=300000 \
+    ASANA_PROXY_CACHE_PROJECT_MS=300000 \
+    ASANA_PROXY_CACHE_TASK_MS=300000 \
+    ASANA_PROXY_CACHE_DEFAULT_MS=300000 \
+    ASANA_PROXY_CACHE_MAX_ENTRIES=10000
 
 COPY package.json package-lock.json* ./
 RUN npm ci --omit=dev

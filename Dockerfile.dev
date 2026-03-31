@@ -3,6 +3,13 @@ FROM node:20-alpine
 
 WORKDIR /app
 
+# 與 .env 一致；docker-compose 的 env_file 仍可覆寫
+ENV ASANA_PROXY_CACHE_LIST_MS=300000 \
+    ASANA_PROXY_CACHE_PROJECT_MS=300000 \
+    ASANA_PROXY_CACHE_TASK_MS=300000 \
+    ASANA_PROXY_CACHE_DEFAULT_MS=300000 \
+    ASANA_PROXY_CACHE_MAX_ENTRIES=10000
+
 COPY package.json package-lock.json* ./
 RUN npm install
 

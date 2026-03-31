@@ -2,6 +2,7 @@ import express from "express";
 import axios from "axios";
 import dotenv from "dotenv";
 import cookieSession from "cookie-session";
+import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -156,13 +157,132 @@ async function asanaGet(path, accessToken, params = {}) {
   return res.data;
 }
 
+// ───────────────── GET /api/* 記憶體快取（依使用者 token 雜湊隔離）─────────────────
+
+/** 環境變數正數；可寫 300000 或 300_000（底線忽略）。無效則用 fallback。 */
+function readPositiveEnvNumber(name, fallback) {
+  const raw = process.env[name];
+  if (raw == null || String(raw).trim() === "") return fallback;
+  const n = Number(String(raw).replace(/_/g, ""));
+  return Number.isFinite(n) && n > 0 ? n : fallback;
+}
+
+function cacheUserIdFromToken(accessToken) {
+  return createHash("sha256").update(accessToken, "utf8").digest("hex").slice(0, 32);
+}
+
+function shouldBypassApiCache(req) {
+  const cc = req.headers["cache-control"];
+  if (cc && /no-cache|no-store|max-age=0/i.test(String(cc))) return true;
+  const pragma = req.headers.pragma;
+  if (pragma && /no-cache/i.test(String(pragma))) return true;
+  const q = req.query;
+  if (q._t != null && String(q._t) !== "") return true;
+  if (q._nocache === "1" || q._nocache === "true") return true;
+  return false;
+}
+
+const ASANA_PROXY_CACHE_SKIP_KEYS = new Set(["_t", "_nocache"]);
+
+function normalizedQueryString(query) {
+  const entries = Object.entries(query)
+    .filter(([k]) => !ASANA_PROXY_CACHE_SKIP_KEYS.has(String(k).toLowerCase()))
+    .map(([k, v]) => [k, Array.isArray(v) ? v.join(",") : v == null ? "" : String(v)])
+    .sort(([a], [b]) => a.localeCompare(b));
+  return new URLSearchParams(entries).toString();
+}
+
+function asanaForwardQuery(query) {
+  const out = { ...query };
+  for (const k of Object.keys(out)) {
+    if (ASANA_PROXY_CACHE_SKIP_KEYS.has(String(k).toLowerCase())) delete out[k];
+  }
+  return out;
+}
+
+/** 分級 TTL（毫秒）；未設定時各級預設 5 分鐘。 */
+function getApiCacheTtlMs(asanaPath) {
+  const p = asanaPath.toLowerCase();
+  const fiveMin = 5 * 60_000;
+  const long = readPositiveEnvNumber("ASANA_PROXY_CACHE_LIST_MS", fiveMin);
+  const medium = readPositiveEnvNumber("ASANA_PROXY_CACHE_PROJECT_MS", fiveMin);
+  const short = readPositiveEnvNumber("ASANA_PROXY_CACHE_TASK_MS", fiveMin);
+  const def = readPositiveEnvNumber("ASANA_PROXY_CACHE_DEFAULT_MS", fiveMin);
+
+  if (/\/tasks(\/|$|\?)/.test(p)) return short;
+  if (/\/sections/.test(p)) return short;
+  if (/\/workspaces\b/.test(p) && !/\/tasks/.test(p)) return long;
+  if (/\/projects\b/.test(p) && !/\/tasks/.test(p) && !/\/sections/.test(p)) {
+    return medium;
+  }
+  return def;
+}
+
+const apiResponseCache = new Map();
+const API_CACHE_MAX_ENTRIES = readPositiveEnvNumber(
+  "ASANA_PROXY_CACHE_MAX_ENTRIES",
+  10000
+);
+
+function pruneApiCacheIfNeeded() {
+  const now = Date.now();
+  for (const [key, entry] of apiResponseCache) {
+    if (now > entry.expiresAt) apiResponseCache.delete(key);
+  }
+  while (apiResponseCache.size > API_CACHE_MAX_ENTRIES) {
+    const oldest = apiResponseCache.keys().next().value;
+    if (oldest === undefined) break;
+    apiResponseCache.delete(oldest);
+  }
+}
+
+function apiCacheGet(cacheKey) {
+  const entry = apiResponseCache.get(cacheKey);
+  if (!entry) return null;
+  if (Date.now() > entry.expiresAt) {
+    apiResponseCache.delete(cacheKey);
+    return null;
+  }
+  return entry.data;
+}
+
+function apiCacheSet(cacheKey, data, ttlMs) {
+  pruneApiCacheIfNeeded();
+  if (apiResponseCache.size >= API_CACHE_MAX_ENTRIES) {
+    const oldest = apiResponseCache.keys().next().value;
+    if (oldest !== undefined) apiResponseCache.delete(oldest);
+  }
+  apiResponseCache.set(cacheKey, { data, expiresAt: Date.now() + ttlMs });
+}
+
 // 將前端的 GET /api/* 轉發到 Asana API
 app.get("/api/*", requireAuth, async (req, res) => {
   const accessToken = getAccessToken(req);
   const asanaPath = req.path.replace(/^\/api/, "");
+  const bypass = shouldBypassApiCache(req);
+  const forwardQuery = asanaForwardQuery(req.query);
+  const qStr = normalizedQueryString(forwardQuery);
+  const cacheKey = `${cacheUserIdFromToken(accessToken)}:${asanaPath}?${qStr}`;
+
+  if (!bypass) {
+    const cached = apiCacheGet(cacheKey);
+    if (cached !== null) {
+      console.log(
+        "[asana-proxy-cache] HIT",
+        asanaPath,
+        qStr ? `?${qStr}` : ""
+      );
+      res.setHeader("X-Asana-Proxy-Cache", "HIT");
+      return res.json(cached);
+    }
+  }
 
   try {
-    const data = await asanaGet(asanaPath, accessToken, req.query);
+    const data = await asanaGet(asanaPath, accessToken, forwardQuery);
+    if (!bypass) {
+      apiCacheSet(cacheKey, data, getApiCacheTtlMs(asanaPath));
+    }
+    res.setHeader("X-Asana-Proxy-Cache", bypass ? "BYPASS" : "MISS");
     // 回傳結構維持與 Asana 相同（含 data/next_page 等），前端程式無需改動
     res.json(data);
   } catch (e) {

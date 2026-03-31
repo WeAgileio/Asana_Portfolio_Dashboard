@@ -56,12 +56,8 @@ const filteredDisplayItems = computed(() => {
   return applyProjectNameSort(base, projectNameSortOrder.value);
 });
 
-/** 任務載入中或專案進度重載中時禁止橫向拖曳捲動 */
-const bytimeDragScrollDisabled = computed(
-  () =>
-    loading.value ||
-    filteredDisplayItems.value.some((item: ProjectProgress) => item.loadingTasks)
-);
+/** 僅在整批初始載入（loading）時禁止橫向拖曳；單專案任務載入時不鎖全表（與專案進度頁一致） */
+const bytimeDragScrollDisabled = computed(() => loading.value);
 
 const isDraggingBytimeScroll = ref(false);
 const bytimeDragStartX = ref(0);
@@ -512,6 +508,11 @@ function beginReloadAndScrollToCurrentMonth() {
   void loadProgress();
 }
 
+function beginResyncAndScrollToCurrentMonth() {
+  scrollAfterReloadToCurrentMonth.value = true;
+  void loadProgress({ bypassProxyCache: true });
+}
+
 function tryScrollToCurrentMonthAfterDataReady(retries = 8) {
   nextTick(() => {
     requestAnimationFrame(() => {
@@ -646,6 +647,15 @@ onActivated(() => {
             @click="beginReloadAndScrollToCurrentMonth"
           >
             {{ loading ? "載入中…" : "重新載入" }}
+          </button>
+          <button
+            type="button"
+            class="resync-btn"
+            :disabled="loading"
+            title="略過伺服器快取，向 Asana 重新拉取最新資料"
+            @click="beginResyncAndScrollToCurrentMonth"
+          >
+            {{ loading ? "載入中…" : "重新同步數據" }}
           </button>
           <button
             type="button"
@@ -894,9 +904,17 @@ onActivated(() => {
                         type="button"
                         class="project-reload-btn"
                         :disabled="item.loadingTasks"
-                        :title="item.loadingTasks ? '載入中…' : '重新載入此專案'"
+                        :title="
+                          item.loadingTasks
+                            ? '載入中…'
+                            : '重新載入此專案（略過快取，向 Asana 取最新）'
+                        "
                         :aria-label="'重新載入專案：' + item.project.name"
-                        @click.stop="reloadProjectProgress(item.project.gid)"
+                        @click.stop="
+                          reloadProjectProgress(item.project.gid, {
+                            bypassProxyCache: true,
+                          })
+                        "
                       >
                         <svg
                           class="project-reload-icon"
@@ -1022,6 +1040,12 @@ onActivated(() => {
                     </div>
 
                   </div>
+                  <div
+                    v-if="item.loadingTasks"
+                    class="bytime-cell-loading-mask bytime-cell-loading-mask--show-label"
+                  >
+                    <span class="timeline-loading-text">任務載入中…</span>
+                  </div>
                 </th>
                 <td
                   class="sticky-col-unsched bytime-cell-stack td-unsched"
@@ -1096,6 +1120,11 @@ onActivated(() => {
                       </div>
                     </div>
                   </template>
+                  <div
+                    v-if="item.loadingTasks"
+                    class="bytime-cell-loading-mask"
+                    aria-hidden="true"
+                  />
                 </td>
                 <td
                   v-for="col in monthColumns"
@@ -1159,17 +1188,15 @@ onActivated(() => {
                       </span>
                     </div>
                   </div>
+                  <div
+                    v-if="item.loadingTasks"
+                    class="bytime-cell-loading-mask"
+                    aria-hidden="true"
+                  />
                 </td>
               </tr>
             </tbody>
           </table>
-        </div>
-        <div
-          v-if="anyProjectLoadingTasks"
-          class="bytime-global-loading"
-          aria-live="polite"
-        >
-          <span class="timeline-loading-text">任務載入中…</span>
         </div>
       </section>
 
@@ -1516,6 +1543,25 @@ onActivated(() => {
 }
 .reload-btn:not(:disabled):hover {
   background: #4338ca;
+}
+.resync-btn {
+  height: 30px;
+  padding: 0 10px;
+  border-radius: 6px;
+  border: 1px solid #0d9488;
+  background: #fff;
+  color: #0f766e;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.resync-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+.resync-btn:not(:disabled):hover {
+  background: #f0fdfa;
+  border-color: #0f766e;
 }
 .page-header .secondary-btn {
   height: 30px;
@@ -1878,15 +1924,21 @@ onActivated(() => {
 .bytime-body-row:hover .sticky-col-unsched.bytime-cell-stack {
   background: #f3f4f6;
 }
-.bytime-global-loading {
+/* 僅月欄 td 需要 position:relative（給載入遮罩）；專案／未排 th,td 必須維持 sticky，勿覆寫成 relative */
+.bytime-body-row > td.bytime-cell-stack:not(.sticky-col-unsched) {
+  position: relative;
+}
+.bytime-cell-loading-mask {
   position: absolute;
   inset: 0;
-  background: rgba(249, 250, 251, 0.88);
+  background: rgba(249, 250, 251, 0.8);
+  z-index: 5;
+  pointer-events: none;
+}
+.bytime-cell-loading-mask--show-label {
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 40;
-  pointer-events: none;
 }
 .project-name-text {
   font-size: 15px;

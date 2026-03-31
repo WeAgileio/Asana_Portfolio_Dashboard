@@ -17,11 +17,25 @@ const api = axios.create({
   },
 });
 
+/** 大於 0 時對代理加上 Cache-Control: no-cache，略過伺服器記憶體快取（與 pop 成對使用） */
+let asanaProxyCacheBypassDepth = 0;
+
+export function pushAsanaProxyCacheBypass(): void {
+  asanaProxyCacheBypassDepth++;
+}
+
+export function popAsanaProxyCacheBypass(): void {
+  asanaProxyCacheBypassDepth = Math.max(0, asanaProxyCacheBypassDepth - 1);
+}
+
 // 請求時帶上本地儲存的個人權杖（加密還原後）
 api.interceptors.request.use(async (config) => {
   const auth = useAuthStore();
   const token = await auth.getToken();
   if (token) config.headers.Authorization = `Bearer ${token}`;
+  if (asanaProxyCacheBypassDepth > 0) {
+    config.headers["Cache-Control"] = "no-cache";
+  }
   return config;
 });
 

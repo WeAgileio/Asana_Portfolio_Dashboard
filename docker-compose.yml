@@ -14,9 +14,9 @@ services:
       - backend_node_modules:/app/node_modules
     environment:
       - NODE_ENV=development
-    # 若你有 .env，可在這裡加上
-    # env_file:
-    #   - .env
+    # 載入專案根目錄 .env（含 ASANA_PROXY_CACHE_* 等後端設定）
+    env_file:
+      - .env
 
   frontend:
     build:
