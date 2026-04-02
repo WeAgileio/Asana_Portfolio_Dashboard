@@ -633,8 +633,24 @@ const totalUnscheduledCount = computed(() => {
   return n;
 });
 
+/** 未排欄內 section 中狀態為「已完成」者 */
+const totalUnscheduledDoneCount = computed(() => {
+  let n = 0;
+  for (const item of filteredDisplayItems.value) {
+    for (const sp of sectionsInCell(item, UNSCHEDULED_KEY)) {
+      if (sp.status === "done") n += 1;
+    }
+  }
+  return n;
+});
+
 function unschedCountFor(item: ProjectProgress): number {
   return sectionsInCell(item, UNSCHEDULED_KEY).length;
+}
+
+function unschedDoneCountFor(item: ProjectProgress): number {
+  return sectionsInCell(item, UNSCHEDULED_KEY).filter((sp) => sp.status === "done")
+    .length;
 }
 
 function expandUnschedColumn() {
@@ -861,13 +877,25 @@ onActivated(() => {
                       :title="
                         unschedColumnExpanded
                           ? '收合未排欄'
-                          : '展開未排欄（共 ' + totalUnscheduledCount + ' 個 section）'
+                          : '展開未排欄（已完成 ' +
+                            totalUnscheduledDoneCount +
+                            '，共 ' +
+                            totalUnscheduledCount +
+                            ' 個 section）'
                       "
                       @click="toggleUnschedColumn"
                     >
                       <span class="unsched-head-label">未排</span>
                       <span class="unsched-head-count-row">
-                        <span class="unsched-head-count">{{ totalUnscheduledCount }}</span>
+                        <span
+                          class="unsched-head-done"
+                          :title="'已完成：' + totalUnscheduledDoneCount"
+                        >{{ totalUnscheduledDoneCount }}</span>
+                        <span class="unsched-head-count-slash" aria-hidden="true">/</span>
+                        <span
+                          class="unsched-head-count"
+                          :title="'未排 section 總數：' + totalUnscheduledCount"
+                        >{{ totalUnscheduledCount }}</span>
                         <span class="unsched-chevron" aria-hidden="true">{{
                           unschedColumnExpanded ? "▼" : "▶"
                         }}</span>
@@ -1140,10 +1168,26 @@ onActivated(() => {
                     v-if="!unschedColumnExpanded"
                     type="button"
                     class="unsched-cell-toggle"
-                    :aria-label="'展開未排，此專案 ' + unschedCountFor(item) + ' 個 section'"
+                    :aria-label="
+                      '展開未排，此專案已完成 ' +
+                      unschedDoneCountFor(item) +
+                      '，共 ' +
+                      unschedCountFor(item) +
+                      ' 個 section'
+                    "
                     @click="expandUnschedColumn"
                   >
-                    <span class="unsched-cell-count">{{ unschedCountFor(item) }}</span>
+                    <span class="unsched-cell-counts">
+                      <span
+                        class="unsched-cell-done"
+                        :title="'已完成：' + unschedDoneCountFor(item)"
+                      >{{ unschedDoneCountFor(item) }}</span>
+                      <span class="unsched-cell-count-slash" aria-hidden="true">/</span>
+                      <span
+                        class="unsched-cell-count"
+                        :title="'未排 section 總數：' + unschedCountFor(item)"
+                      >{{ unschedCountFor(item) }}</span>
+                    </span>
                   </button>
 
                   <template v-if="unschedColumnExpanded">
@@ -1941,6 +1985,19 @@ onActivated(() => {
   line-height: 1;
   text-align: center;
 }
+.unsched-head-count-slash {
+  font-size: 12px;
+  font-weight: 600;
+  color: #9ca3af;
+  line-height: 1;
+}
+.unsched-head-done {
+  font-size: 15px;
+  font-weight: 800;
+  color: #22c55e;
+  line-height: 1;
+  text-align: center;
+}
 .unsched-chevron {
   font-size: 11px;
   line-height: 1;
@@ -1969,6 +2026,12 @@ onActivated(() => {
 .bytime-grid-table.unsched-col-collapsed .unsched-head-count {
   font-size: 13px;
 }
+.bytime-grid-table.unsched-col-collapsed .unsched-head-count-slash {
+  font-size: 10px;
+}
+.bytime-grid-table.unsched-col-collapsed .unsched-head-done {
+  font-size: 12px;
+}
 .bytime-grid-table.unsched-col-collapsed .unsched-chevron {
   font-size: 9px;
 }
@@ -1983,7 +2046,7 @@ onActivated(() => {
   justify-content: center;
   min-width: 36px;
   min-height: 36px;
-  padding: 6px 8px;
+  padding: 6px 6px;
   border: 1px solid #e5e7eb;
   border-radius: 10px;
   background: #fff;
@@ -1994,10 +2057,28 @@ onActivated(() => {
   border-color: #c7d2fe;
   background: #eef2ff;
 }
+.unsched-cell-counts {
+  display: inline-flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  line-height: 1;
+}
 .unsched-cell-count {
   font-size: 15px;
   font-weight: 800;
   color: #4f46e5;
+}
+.unsched-cell-count-slash {
+  font-size: 11px;
+  font-weight: 600;
+  color: #9ca3af;
+}
+.unsched-cell-done {
+  font-size: 13px;
+  font-weight: 800;
+  color: #22c55e;
 }
 .bytime-project-cell {
   font-weight: 400;
