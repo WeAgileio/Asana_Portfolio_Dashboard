@@ -540,8 +540,12 @@ const anyProjectLoadingTasks = computed(() =>
   filteredDisplayItems.value.some((i) => i.loadingTasks)
 );
 
-/** false = 未排欄折疊（省寬度），點表頭或列上數字展開 */
-const unschedColumnExpanded = ref(false);
+/** 目前展開未排內容的專案 gid；null 表示皆收合。僅該列顯示卡片，點他列會改為只展開該列。 */
+const unschedExpandedProjectGid = ref<string | null>(null);
+
+const unschedColumnExpanded = computed(
+  () => unschedExpandedProjectGid.value !== null
+);
 
 /** 重新載入完成後將橫向捲動對齊「目前月份」欄 */
 const scrollAfterReloadToCurrentMonth = ref(false);
@@ -653,13 +657,26 @@ function unschedDoneCountFor(item: ProjectProgress): number {
     .length;
 }
 
-function expandUnschedColumn() {
-  unschedColumnExpanded.value = true;
+function expandUnschedColumn(projectGid: string) {
+  if (unschedExpandedProjectGid.value === projectGid) {
+    unschedExpandedProjectGid.value = null;
+  } else {
+    unschedExpandedProjectGid.value = projectGid;
+  }
 }
 
+/** 表頭：收合目前展開的那一列未排 */
 function toggleUnschedColumn() {
-  unschedColumnExpanded.value = !unschedColumnExpanded.value;
+  unschedExpandedProjectGid.value = null;
 }
+
+watch(filteredDisplayItems, (items) => {
+  const gid = unschedExpandedProjectGid.value;
+  if (!gid) return;
+  if (!items.some((i) => i.project.gid === gid)) {
+    unschedExpandedProjectGid.value = null;
+  }
+});
 
 onMounted(() => {
   // 首次刷新進頁也要在資料載完後對齊當月欄
@@ -876,8 +893,8 @@ onActivated(() => {
                       :aria-expanded="unschedColumnExpanded"
                       :title="
                         unschedColumnExpanded
-                          ? '收合未排欄'
-                          : '展開未排欄（已完成 ' +
+                          ? '收合未排欄（關閉目前展開的專案列）'
+                          : '點各專案列未排格可展開該專案（全體：已完成 ' +
                             totalUnscheduledDoneCount +
                             '，共 ' +
                             totalUnscheduledCount +
@@ -1162,20 +1179,23 @@ onActivated(() => {
                 </th>
                 <td
                   class="sticky-col-unsched bytime-cell-stack td-unsched"
-                  :class="{ 'td-unsched-collapsed': !unschedColumnExpanded }"
+                  :class="{
+                    'td-unsched-collapsed':
+                      unschedExpandedProjectGid !== item.project.gid,
+                  }"
                 >
                   <button
-                    v-if="!unschedColumnExpanded"
+                    v-if="unschedExpandedProjectGid !== item.project.gid"
                     type="button"
                     class="unsched-cell-toggle"
                     :aria-label="
-                      '展開未排，此專案已完成 ' +
+                      '展開此專案未排，已完成 ' +
                       unschedDoneCountFor(item) +
                       '，共 ' +
                       unschedCountFor(item) +
                       ' 個 section'
                     "
-                    @click="expandUnschedColumn"
+                    @click="expandUnschedColumn(item.project.gid)"
                   >
                     <span class="unsched-cell-counts">
                       <span
@@ -1190,7 +1210,7 @@ onActivated(() => {
                     </span>
                   </button>
 
-                  <template v-if="unschedColumnExpanded">
+                  <template v-if="unschedExpandedProjectGid === item.project.gid">
                     <div
                       v-for="sp in sectionsInCell(item, UNSCHEDULED_KEY)"
                       :key="sp.section.gid"
