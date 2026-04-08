@@ -8,14 +8,12 @@ import {
   onActivated,
   onUnmounted,
 } from "vue";
-import type { AsanaProject } from "@/types/asana";
+import type { AsanaTask } from "@/types/asana";
 import {
   useProjectProgress,
-  type SectionProgress,
   type ProjectProgress,
 } from "@/composables/useProjectProgress";
 import ScrollToTopButton from "@/components/ScrollToTopButton.vue";
-import ProgressStatusLegend from "@/components/ProgressStatusLegend.vue";
 import ProjectSortControl from "@/components/ProjectSortControl.vue";
 import {
   applyProjectNameSort,
@@ -31,14 +29,12 @@ const {
   projectsOptionsLoading,
   selectedProjectGids,
   projectPickerOpen,
-  selectedSection,
   loadProgress,
   todayLabel,
   projectBillingTotal,
   projectBillingCollectedTotal,
   projectBillingFilledCoins,
   projectBillingYearLines,
-  selectSection,
   reloadProjectProgress,
   bootstrapFromStorage,
   syncSelectionFromStorage,
@@ -46,8 +42,22 @@ const {
 
 const projectSearchQuery = ref("");
 const projectNameSortOrder = ref<ProjectNameSortOrder>("default");
-/** 點擊月欄表頭後，將該月欄內有 section 的專案列排到最上（再點同一欄取消） */
+/** 點擊月欄表頭後，將該月欄內有請款進展的專案列排到最上（再點同一欄取消） */
 const prioritizeMonthKey = ref<string | null>(null);
+
+type BillingTaskCell = { task: AsanaTask };
+
+function collectBillingTasks(item: ProjectProgress): BillingTaskCell[] {
+  const out: BillingTaskCell[] = [];
+  for (const sp of item.sections) {
+    for (const t of sp.tasks) {
+      if (t.billingTaskYes) {
+        out.push({ task: t });
+      }
+    }
+  }
+  return out;
+}
 
 const searchFilteredDisplayItems = computed(() => {
   const q = projectSearchQuery.value.trim().toLowerCase();
@@ -237,29 +247,12 @@ function enumerateMonths(from: Ym, to: Ym): MonthColumn[] {
   return out;
 }
 
-function milestoneTimeMs(sp: SectionProgress): number {
-  if (!sp.latestMilestoneDueOn) return Number.POSITIVE_INFINITY;
-  const t = new Date(sp.latestMilestoneDueOn).getTime();
-  return Number.isNaN(t) ? Number.POSITIVE_INFINITY : t;
-}
-
-/** 該 section 內任務「最晚的 created_at」毫秒，作為排序用（無則 0） */
-function sectionLatestTaskCreatedMs(sp: SectionProgress): number {
-  let max = 0;
-  for (const t of sp.tasks) {
-    if (!t.created_at) continue;
-    const ms = new Date(t.created_at).getTime();
-    if (Number.isFinite(ms) && ms > max) max = ms;
-  }
-  return max;
-}
-
 const monthColumns = computed((): MonthColumn[] => {
   const bounds: Ym[] = [];
   for (const item of searchFilteredDisplayItems.value) {
-    for (const sp of item.sections) {
-      if (!sp.latestMilestoneDueOn) continue;
-      const ym = parseDueToYm(sp.latestMilestoneDueOn);
+    for (const cell of collectBillingTasks(item)) {
+      if (!cell.task.due_on) continue;
+      const ym = parseDueToYm(cell.task.due_on);
       if (ym) bounds.push(ym);
     }
   }
@@ -291,88 +284,86 @@ const yearHeaderSpans = computed(() => {
   return spans;
 });
 
-function buildBucketMap(item: ProjectProgress): Map<string, SectionProgress[]> {
-  const map = new Map<string, SectionProgress[]>();
+function buildBillingTaskBucketMap(item: ProjectProgress): Map<string, BillingTaskCell[]> {
+  const map = new Map<string, BillingTaskCell[]>();
   map.set(UNSCHEDULED_KEY, []);
   for (const col of monthColumns.value) {
     map.set(col.key, []);
   }
 
-  for (const sp of item.sections) {
+  for (const cell of collectBillingTasks(item)) {
     if (forceAllSectionsInUnscheduled) {
-      map.get(UNSCHEDULED_KEY)!.push(sp);
+      map.get(UNSCHEDULED_KEY)!.push(cell);
       continue;
     }
-    const due = sp.latestMilestoneDueOn;
+    const due = cell.task.due_on;
     if (!due) {
-      map.get(UNSCHEDULED_KEY)!.push(sp);
+      map.get(UNSCHEDULED_KEY)!.push(cell);
       continue;
     }
     const ym = parseDueToYm(due);
     const k = ym ? ymKey(ym) : null;
     if (k && map.has(k)) {
-      map.get(k)!.push(sp);
+      map.get(k)!.push(cell);
     } else {
-      map.get(UNSCHEDULED_KEY)!.push(sp);
+      map.get(UNSCHEDULED_KEY)!.push(cell);
     }
   }
 
   for (const arr of map.values()) {
     arr.sort((a, b) => {
-      const dueDiff = milestoneTimeMs(a) - milestoneTimeMs(b);
-      if (dueDiff !== 0) return dueDiff;
-      const ca = sectionLatestTaskCreatedMs(a);
-      const cb = sectionLatestTaskCreatedMs(b);
+      const da = a.task.due_on ? new Date(a.task.due_on).getTime() : 0;
+      const db = b.task.due_on ? new Date(b.task.due_on).getTime() : 0;
+      if (da !== db) return da - db;
+      const ca = a.task.created_at ? new Date(a.task.created_at).getTime() : 0;
+      const cb = b.task.created_at ? new Date(b.task.created_at).getTime() : 0;
       if (ca !== cb) return cb - ca;
-      return a.section.name.localeCompare(b.section.name, "zh-Hant");
+      return a.task.name.localeCompare(b.task.name, "zh-Hant");
     });
   }
   return map;
 }
 
-const cellBucketsByProjectGid = computed(() => {
-  const out = new Map<string, Map<string, SectionProgress[]>>();
+const billingTaskBucketsByProjectGid = computed(() => {
+  const out = new Map<string, Map<string, BillingTaskCell[]>>();
   for (const item of searchFilteredDisplayItems.value) {
-    out.set(item.project.gid, buildBucketMap(item));
+    out.set(item.project.gid, buildBillingTaskBucketMap(item));
   }
   return out;
 });
 
-function sectionsInCell(
-  item: ProjectProgress,
-  cellKey: string
-): SectionProgress[] {
+function billingTasksInCell(item: ProjectProgress, cellKey: string): BillingTaskCell[] {
   return (
-    cellBucketsByProjectGid.value.get(item.project.gid)?.get(cellKey) ?? []
+    billingTaskBucketsByProjectGid.value.get(item.project.gid)?.get(cellKey) ?? []
   );
 }
 
 /**
- * 點月欄後，該月有 section 的專案列：延後(紅) > 風險(黃) > 其餘；
- * 同層再依該月欄內「里程碑截止日」越早越上。
+ * 點月欄後：該月有請款進展的專案列優先；同層「有未完成」在上，
+ * 再依該月欄內任務截止日越早越上。
  */
 function monthColumnSortKeyForItem(
   item: ProjectProgress,
   monthKey: string
 ): { has: boolean; tier: number; earliestDueMs: number } {
-  const sections = sectionsInCell(item, monthKey);
-  if (sections.length === 0) {
+  const entries = billingTasksInCell(item, monthKey);
+  if (entries.length === 0) {
     return { has: false, tier: 99, earliestDueMs: 0 };
   }
-  const hasBehind = sections.some((s) => s.status === "behind");
-  const hasAtRisk = sections.some((s) => s.status === "at-risk");
-  let tier: number;
-  if (hasBehind) tier = 0;
-  else if (hasAtRisk) tier = 1;
-  else tier = 2;
+  const hasIncomplete = entries.some((e) => !e.task.completed);
+  const tier = hasIncomplete ? 0 : 1;
 
   let earliestDueMs = Infinity;
-  for (const s of sections) {
-    if (!s.latestMilestoneDueOn) continue;
-    const ms = new Date(s.latestMilestoneDueOn).getTime();
+  for (const e of entries) {
+    if (!e.task.due_on) continue;
+    const ms = new Date(e.task.due_on).getTime();
     if (Number.isFinite(ms) && ms < earliestDueMs) earliestDueMs = ms;
   }
-  return { has: true, tier, earliestDueMs };
+  return {
+    has: true,
+    tier,
+    earliestDueMs: earliestDueMs === Infinity ? 0 : earliestDueMs,
+  };
 }
 
 const filteredDisplayItems = computed(() => {
@@ -405,60 +396,30 @@ const filteredDisplayItems = computed(() => {
   return scored.map((x) => x.item);
 });
 
-/** 各月欄表頭：目前篩選下，該月欄內 section 總數（跨所有專列加總） */
-const monthColumnSectionCounts = computed(() => {
+/** 各月欄表頭：該月欄內請款進展總數（跨所有專列加總） */
+const monthColumnBillingTaskCounts = computed(() => {
   const counts: Record<string, number> = {};
   for (const col of monthColumns.value) {
     let n = 0;
     for (const item of searchFilteredDisplayItems.value) {
-      n += sectionsInCell(item, col.key).length;
+      n += billingTasksInCell(item, col.key).length;
     }
     counts[col.key] = n;
   }
   return counts;
 });
 
-/** 各月欄表頭：依狀態統計 section 數（含 0），跨所有可見專列加總 */
-const monthColumnSectionStatusCounts = computed(() => {
-  const counts: Record<
-    string,
-    {
-      notStarted: number;
-      inProgress: number;
-      done: number;
-      behind: number;
-      atRisk: number;
-    }
-  > = {};
+/** 各月欄表頭：請款進展已完成／未完成數 */
+const monthColumnBillingTaskStatusCounts = computed(() => {
+  const counts: Record<string, { done: number; open: number }> = {};
 
   for (const col of monthColumns.value) {
-    counts[col.key] = {
-      notStarted: 0,
-      inProgress: 0,
-      done: 0,
-      behind: 0,
-      atRisk: 0,
-    };
+    counts[col.key] = { done: 0, open: 0 };
 
     for (const item of searchFilteredDisplayItems.value) {
-      for (const sp of sectionsInCell(item, col.key)) {
-        switch (sp.status) {
-          case "not-started":
-            counts[col.key]!.notStarted += 1;
-            break;
-          case "in-progress":
-            counts[col.key]!.inProgress += 1;
-            break;
-          case "done":
-            counts[col.key]!.done += 1;
-            break;
-          case "behind":
-            counts[col.key]!.behind += 1;
-            break;
-          case "at-risk":
-            counts[col.key]!.atRisk += 1;
-            break;
-        }
+      for (const cell of billingTasksInCell(item, col.key)) {
+        if (cell.task.completed) counts[col.key]!.done += 1;
+        else counts[col.key]!.open += 1;
       }
     }
   }
@@ -466,51 +427,22 @@ const monthColumnSectionStatusCounts = computed(() => {
   return counts;
 });
 
-/** 左側專案欄：該專案 sections 依狀態統計（含 0） */
-function projectSectionStatusCounts(item: ProjectProgress): {
-  notStarted: number;
-  inProgress: number;
+/** 左側專案欄：該專案請款進展統計 */
+function projectBillingTaskStatusCounts(item: ProjectProgress): {
+  total: number;
   done: number;
-  behind: number;
-  atRisk: number;
+  open: number;
 } {
-  const out = {
-    notStarted: 0,
-    inProgress: 0,
-    done: 0,
-    behind: 0,
-    atRisk: 0,
+  const cells = collectBillingTasks(item);
+  let done = 0;
+  for (const c of cells) {
+    if (c.task.completed) done += 1;
+  }
+  return {
+    total: cells.length,
+    done,
+    open: cells.length - done,
   };
-
-  for (const sp of item.sections) {
-    switch (sp.status) {
-      case "not-started":
-        out.notStarted += 1;
-        break;
-      case "in-progress":
-        out.inProgress += 1;
-        break;
-      case "done":
-        out.done += 1;
-        break;
-      case "behind":
-        out.behind += 1;
-        break;
-      case "at-risk":
-        out.atRisk += 1;
-        break;
-    }
-  }
-
-  return out;
-}
-
-function onRowClick(project: AsanaProject, sp: SectionProgress) {
-  if (bytimeDragMoved.value) {
-    bytimeDragMoved.value = false;
-    return;
-  }
-  selectSection(project, sp);
 }
 
 function onMonthColumnHeaderClick(col: MonthColumn) {
@@ -527,10 +459,9 @@ watch(monthColumns, (cols) => {
   if (!cols.some((c) => c.key === k)) prioritizeMonthKey.value = null;
 });
 
-/** 卡片外顯示：里程碑最晚截止日（與格內排序依據一致） */
-function formatSectionDueOnDisplay(sp: SectionProgress): string {
-  if (!sp.latestMilestoneDueOn) return "—";
-  return new Date(sp.latestMilestoneDueOn).toLocaleDateString("zh-TW", {
+function formatTaskDueOnDisplay(task: AsanaTask): string {
+  if (!task.due_on) return "—";
+  return new Date(task.due_on).toLocaleDateString("zh-TW", {
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
@@ -633,28 +564,27 @@ watch(
 const totalUnscheduledCount = computed(() => {
   let n = 0;
   for (const item of filteredDisplayItems.value) {
-    n += sectionsInCell(item, UNSCHEDULED_KEY).length;
+    n += billingTasksInCell(item, UNSCHEDULED_KEY).length;
   }
   return n;
 });
 
-/** 未排欄內 section 中狀態為「已完成」者 */
 const totalUnscheduledDoneCount = computed(() => {
   let n = 0;
   for (const item of filteredDisplayItems.value) {
-    for (const sp of sectionsInCell(item, UNSCHEDULED_KEY)) {
-      if (sp.status === "done") n += 1;
+    for (const cell of billingTasksInCell(item, UNSCHEDULED_KEY)) {
+      if (cell.task.completed) n += 1;
     }
   }
   return n;
 });
 
 function unschedCountFor(item: ProjectProgress): number {
-  return sectionsInCell(item, UNSCHEDULED_KEY).length;
+  return billingTasksInCell(item, UNSCHEDULED_KEY).length;
 }
 
 function unschedDoneCountFor(item: ProjectProgress): number {
-  return sectionsInCell(item, UNSCHEDULED_KEY).filter((sp) => sp.status === "done")
+  return billingTasksInCell(item, UNSCHEDULED_KEY).filter((c) => c.task.completed)
     .length;
 }
 
@@ -699,7 +629,7 @@ onActivated(() => {
             <ProjectSortControl v-model="projectNameSortOrder" :disabled="loading" />
           <span class="header-search-divider" role="separator" aria-hidden="true" />
           <input
-            id="project-search-bytime-input"
+            id="project-search-billing-bytime-input"
             v-model="projectSearchQuery"
             type="search"
             class="project-search-input"
@@ -712,7 +642,14 @@ onActivated(() => {
           </div>
         </div>
         <div class="toolbar-right">
-          <ProgressStatusLegend />
+          <div class="billing-legend" aria-label="完成狀態說明">
+            <span class="legend-item"
+              ><span class="legend-dot legend-done" />已完成</span
+            >
+            <span class="legend-item"
+              ><span class="legend-dot legend-open" />未完成</span
+            >
+          </div>
           <div class="meta-right">
             <div class="date-label">日期：{{ todayLabel() }}</div>
             <button
@@ -813,10 +750,10 @@ onActivated(() => {
         {{ error }}
       </div>
       <div v-else-if="loading && items.length === 0" class="state loading">
-        正在載入專案進度…
+        正在載入請款進展…
       </div>
       <div v-else-if="items.length === 0" class="state empty">
-        目前沒有可顯示的專案進度。
+        目前沒有可顯示的專案。
       </div>
       <div
         v-else-if="
@@ -868,7 +805,7 @@ onActivated(() => {
                             totalUnscheduledDoneCount +
                             '，共 ' +
                             totalUnscheduledCount +
-                            ' 個 section）'
+                            ' 筆請款進展）'
                       "
                       @click="toggleUnschedColumn"
                     >
@@ -881,7 +818,7 @@ onActivated(() => {
                         <span class="unsched-head-count-slash" aria-hidden="true">/</span>
                         <span
                           class="unsched-head-count"
-                          :title="'未排 section 總數：' + totalUnscheduledCount"
+                          :title="'未排請款進展總數：' + totalUnscheduledCount"
                         >{{ totalUnscheduledCount }}</span>
                         <span class="unsched-chevron" aria-hidden="true">{{
                           unschedColumnExpanded ? "▼" : "▶"
@@ -907,9 +844,9 @@ onActivated(() => {
                     role="button"
                     tabindex="0"
                     :title="
-                      '點擊：該月有內容的專案列排到最上（延後→風險→其餘，再依截止日）；再點同一欄取消。' +
-                      (monthColumnSectionCounts[col.key] ?? 0) +
-                      ' 個 section'
+                      '點擊：該月有請款進展的專案列排到最上（未完成優先，再依截止日）；再點同一欄取消。' +
+                      (monthColumnBillingTaskCounts[col.key] ?? 0) +
+                      ' 筆任務'
                     "
                     @mousedown.stop
                     @click.stop="onMonthColumnHeaderClick(col)"
@@ -922,42 +859,24 @@ onActivated(() => {
                         class="th-month-count"
                         :title="
                           '此月欄共 ' +
-                          (monthColumnSectionCounts[col.key] ?? 0) +
-                          ' 個 section'
+                          (monthColumnBillingTaskCounts[col.key] ?? 0) +
+                          ' 筆請款進展'
                         "
                       >
-                        {{ monthColumnSectionCounts[col.key] ?? 0 }}
+                        {{ monthColumnBillingTaskCounts[col.key] ?? 0 }}
                       </span>
-                      <div class="th-month-status-row" aria-label="各狀態 section 數量">
-                        <span
-                          class="th-month-status-item th-month-status-not-started"
-                          title="尚未開始"
-                        >
-                          {{ monthColumnSectionStatusCounts[col.key]?.notStarted ?? 0 }}
-                        </span>
-                        <span
-                          class="th-month-status-item th-month-status-in-progress"
-                          title="進行中"
-                        >
-                          {{ monthColumnSectionStatusCounts[col.key]?.inProgress ?? 0 }}
-                        </span>
+                      <div class="th-month-status-row" aria-label="請款進展完成／未完成數">
                         <span
                           class="th-month-status-item th-month-status-done"
                           title="已完成"
                         >
-                          {{ monthColumnSectionStatusCounts[col.key]?.done ?? 0 }}
+                          {{ monthColumnBillingTaskStatusCounts[col.key]?.done ?? 0 }}
                         </span>
                         <span
-                          class="th-month-status-item th-month-status-behind"
-                          title="落後"
+                          class="th-month-status-item th-month-status-in-progress"
+                          title="未完成"
                         >
-                          {{ monthColumnSectionStatusCounts[col.key]?.behind ?? 0 }}
-                        </span>
-                        <span
-                          class="th-month-status-item th-month-status-at-risk"
-                          title="風險"
-                        >
-                          {{ monthColumnSectionStatusCounts[col.key]?.atRisk ?? 0 }}
+                          {{ monthColumnBillingTaskStatusCounts[col.key]?.open ?? 0 }}
                         </span>
                       </div>
                     </div>
@@ -1100,42 +1019,24 @@ onActivated(() => {
                       </span>
                     </div>
 
-                    <div class="project-section-status-row" aria-label="各狀態 section 數量">
+                    <div class="project-section-status-row" aria-label="請款進展統計">
                       <span
                         class="project-section-status-item project-section-status-total"
-                        title="總數"
+                        title="請款進展總數"
                       >
-                        {{ item.sections.length }}
-                      </span>
-                      <span
-                        class="project-section-status-item th-month-status-not-started"
-                        title="尚未開始"
-                      >
-                        {{ projectSectionStatusCounts(item).notStarted }}
-                      </span>
-                      <span
-                        class="project-section-status-item th-month-status-in-progress"
-                        title="進行中"
-                      >
-                        {{ projectSectionStatusCounts(item).inProgress }}
+                        {{ projectBillingTaskStatusCounts(item).total }}
                       </span>
                       <span
                         class="project-section-status-item th-month-status-done"
                         title="已完成"
                       >
-                        {{ projectSectionStatusCounts(item).done }}
+                        {{ projectBillingTaskStatusCounts(item).done }}
                       </span>
                       <span
-                        class="project-section-status-item th-month-status-behind"
-                        title="落後"
+                        class="project-section-status-item th-month-status-in-progress"
+                        title="未完成"
                       >
-                        {{ projectSectionStatusCounts(item).behind }}
-                      </span>
-                      <span
-                        class="project-section-status-item th-month-status-at-risk"
-                        title="風險"
-                      >
-                        {{ projectSectionStatusCounts(item).atRisk }}
+                        {{ projectBillingTaskStatusCounts(item).open }}
                       </span>
                     </div>
 
@@ -1163,7 +1064,7 @@ onActivated(() => {
                       unschedDoneCountFor(item) +
                       '，共 ' +
                       unschedCountFor(item) +
-                      ' 個 section'
+                      ' 筆請款進展'
                     "
                     @click="expandUnschedColumn(item.project.gid)"
                   >
@@ -1175,66 +1076,60 @@ onActivated(() => {
                       <span class="unsched-cell-count-slash" aria-hidden="true">/</span>
                       <span
                         class="unsched-cell-count"
-                        :title="'未排 section 總數：' + unschedCountFor(item)"
+                        :title="'未排請款進展總數：' + unschedCountFor(item)"
                       >{{ unschedCountFor(item) }}</span>
                     </span>
                   </button>
 
                   <template v-if="unschedExpandedProjectGid === item.project.gid">
                     <div
-                      v-for="sp in sectionsInCell(item, UNSCHEDULED_KEY)"
-                      :key="sp.section.gid"
-                      class="section-block bytime-section-card"
-                      :data-status="sp.status"
-                      role="button"
-                      tabindex="0"
-                      @click="onRowClick(item.project, sp)"
-                      @keydown.enter.prevent="onRowClick(item.project, sp)"
-                      @keydown.space.prevent="onRowClick(item.project, sp)"
+                      v-for="entry in billingTasksInCell(item, UNSCHEDULED_KEY)"
+                      :key="entry.task.gid"
+                      class="section-block bytime-section-card billing-bytime-card"
+                      :data-status="entry.task.completed ? 'done' : 'open'"
                     >
                       <div class="section-header">
-                        <span class="section-name">{{ sp.section.name }}</span>
+                        <a
+                          class="billing-bytime-task-name"
+                          :href="entry.task.permalink_url"
+                          target="_blank"
+                          rel="noopener"
+                          @click.stop
+                        >
+                          {{ entry.task.name }}
+                        </a>
+                      </div>
+                      <div class="task-billing-row bytime-task-billing">
+                        <span
+                          v-if="typeof entry.task.billingAmount === 'number'"
+                          class="task-billing-value"
+                        >
+                          💰{{ entry.task.billingAmount.toLocaleString("zh-TW") }}
+                        </span>
+                        <span v-else class="task-billing-empty" aria-label="無請款金額"
+                          >💰 —</span
+                        >
                       </div>
                       <div class="section-due-line">
-                        截止日期：{{ formatSectionDueOnDisplay(sp) }}
-                      </div>
-                      <div class="section-date">
-                        <div class="section-billing">
-                          <span v-if="sp.billingTotal > 0">
-                            💰 {{ sp.billingTotal.toLocaleString("zh-TW") }}
-                          </span>
-                          <span v-else>&nbsp;</span>
-                        </div>
+                        截止日期：{{ formatTaskDueOnDisplay(entry.task) }}
                       </div>
                       <div class="section-bar">
                         <div
                           class="section-bar-fill"
-                          :class="[
-                            sp.status === 'done'
-                              ? 'status-done'
-                              : sp.status === 'behind'
-                              ? 'status-behind'
-                              : sp.status === 'at-risk'
-                              ? 'status-at-risk'
-                              : sp.status === 'in-progress'
-                              ? 'status-progress'
-                              : 'status-not-started',
-                          ]"
-                          :style="{ width: `${Math.max(sp.completionRate * 100, 3)}%` }"
+                          :class="
+                            entry.task.completed ? 'status-done' : 'status-progress'
+                          "
+                          :style="{
+                            width: entry.task.completed ? '100%' : '8%',
+                          }"
                         />
                       </div>
-                      <div
-                        class="section-meta"
-                        :class="{
-                          'section-meta-behind': sp.status === 'behind',
-                          'section-meta-at-risk': sp.status === 'at-risk',
-                        }"
-                      >
+                      <div class="section-meta">
                         <span class="rate">
-                          完成度：{{ (sp.completionRate * 100).toFixed(0) }}%
+                          {{ entry.task.completed ? "已完成" : "未完成" }}
                         </span>
-                        <span class="tasks">
-                          任務：{{ sp.completedTasks }}/{{ sp.totalTasks }}
+                        <span v-if="entry.task.assignee" class="tasks">
+                          {{ entry.task.assignee.name }}
                         </span>
                       </div>
                     </div>
@@ -1251,59 +1146,53 @@ onActivated(() => {
                   class="bytime-cell-stack"
                 >
                   <div
-                    v-for="sp in sectionsInCell(item, col.key)"
-                    :key="sp.section.gid"
-                    class="section-block bytime-section-card"
-                    :data-status="sp.status"
-                    role="button"
-                    tabindex="0"
-                    @click="onRowClick(item.project, sp)"
-                    @keydown.enter.prevent="onRowClick(item.project, sp)"
-                    @keydown.space.prevent="onRowClick(item.project, sp)"
+                    v-for="entry in billingTasksInCell(item, col.key)"
+                    :key="entry.task.gid"
+                    class="section-block bytime-section-card billing-bytime-card"
+                    :data-status="entry.task.completed ? 'done' : 'open'"
                   >
                     <div class="section-header">
-                      <span class="section-name">{{ sp.section.name }}</span>
+                      <a
+                        class="billing-bytime-task-name"
+                        :href="entry.task.permalink_url"
+                        target="_blank"
+                        rel="noopener"
+                        @click.stop
+                      >
+                        {{ entry.task.name }}
+                      </a>
+                    </div>
+                    <div class="task-billing-row bytime-task-billing">
+                      <span
+                        v-if="typeof entry.task.billingAmount === 'number'"
+                        class="task-billing-value"
+                      >
+                        💰{{ entry.task.billingAmount.toLocaleString("zh-TW") }}
+                      </span>
+                      <span v-else class="task-billing-empty" aria-label="無請款金額"
+                        >💰 —</span
+                      >
                     </div>
                     <div class="section-due-line">
-                      截止日期：{{ formatSectionDueOnDisplay(sp) }}
-                    </div>
-                    <div class="section-date">
-                      <div class="section-billing">
-                        <span v-if="sp.billingTotal > 0">
-                          💰 {{ sp.billingTotal.toLocaleString("zh-TW") }}
-                        </span>
-                        <span v-else>&nbsp;</span>
-                      </div>
+                      截止日期：{{ formatTaskDueOnDisplay(entry.task) }}
                     </div>
                     <div class="section-bar">
                       <div
                         class="section-bar-fill"
-                        :class="[
-                          sp.status === 'done'
-                            ? 'status-done'
-                            : sp.status === 'behind'
-                            ? 'status-behind'
-                            : sp.status === 'at-risk'
-                            ? 'status-at-risk'
-                            : sp.status === 'in-progress'
-                            ? 'status-progress'
-                            : 'status-not-started',
-                        ]"
-                        :style="{ width: `${Math.max(sp.completionRate * 100, 3)}%` }"
+                        :class="
+                          entry.task.completed ? 'status-done' : 'status-progress'
+                        "
+                        :style="{
+                          width: entry.task.completed ? '100%' : '8%',
+                        }"
                       />
                     </div>
-                    <div
-                      class="section-meta"
-                      :class="{
-                        'section-meta-behind': sp.status === 'behind',
-                        'section-meta-at-risk': sp.status === 'at-risk',
-                      }"
-                    >
+                    <div class="section-meta">
                       <span class="rate">
-                        完成度：{{ (sp.completionRate * 100).toFixed(0) }}%
+                        {{ entry.task.completed ? "已完成" : "未完成" }}
                       </span>
-                      <span class="tasks">
-                        任務：{{ sp.completedTasks }}/{{ sp.totalTasks }}
+                      <span v-if="entry.task.assignee" class="tasks">
+                        {{ entry.task.assignee.name }}
                       </span>
                     </div>
                   </div>
@@ -1319,97 +1208,6 @@ onActivated(() => {
         </div>
       </section>
 
-      <div
-        v-if="selectedSection"
-        class="selected-overlay"
-        @click.self="selectedSection = null"
-      >
-        <section class="selected-panel">
-          <header class="selected-header">
-            <div class="selected-title">
-              {{ selectedSection.project.name }} -
-              {{ selectedSection.section.name }}
-            </div>
-          </header>
-          <ul class="tasks-list">
-            <li
-              v-for="task in selectedSection.tasks"
-              :key="task.gid"
-              class="task-row"
-              :class="{
-                'task-milestone': task.resource_subtype === 'milestone',
-              }"
-            >
-              <div class="task-main">
-                <div class="task-title-line">
-                  <span
-                    v-if="task.resource_subtype === 'milestone'"
-                    class="badge milestone"
-                  >
-                    里程碑
-                  </span>
-                  <a
-                    class="task-name"
-                    :href="task.permalink_url"
-                    target="_blank"
-                    rel="noopener"
-                  >
-                    {{ task.name }}
-                  </a>
-                </div>
-                <div class="task-meta">
-                  <span class="badge project">
-                    {{ selectedSection.project.name }}
-                  </span>
-                  <span class="badge section">
-                    {{ selectedSection.section.name }}
-                  </span>
-                  <span
-                    v-if="task.assignee"
-                    class="badge assignee"
-                  >
-                    指派給：{{ task.assignee.name }}
-                  </span>
-                  <span
-                    v-if="task.due_on"
-                    class="badge due-date"
-                  >
-                    截止日：
-                    {{
-                      new Date(task.due_on).toLocaleDateString("zh-TW", {
-                        year: "numeric",
-                        month: "2-digit",
-                        day: "2-digit",
-                      })
-                    }}
-                  </span>
-                </div>
-              </div>
-              <div class="task-updated">
-                <span class="label">最後更新</span>
-                <span class="value">
-                  {{
-                    (task.modified_at ??
-                      task.completed_at ??
-                      task.created_at) &&
-                    new Date(
-                      task.modified_at ??
-                        task.completed_at ??
-                        task.created_at!
-                    ).toLocaleString("zh-TW")
-                  }}
-                </span>
-                <span
-                  class="status-pill"
-                  :class="task.completed ? 'status-done-pill' : 'status-open-pill'"
-                >
-                  {{ task.completed ? "已完成" : "未完成" }}
-                </span>
-              </div>
-            </li>
-          </ul>
-        </section>
-      </div>
     </main>
 
     <ScrollToTopButton />
@@ -1451,6 +1249,30 @@ onActivated(() => {
   flex-wrap: wrap;
   justify-content: flex-end;
   min-width: 0;
+}
+.billing-legend {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 11px;
+  color: #4b5563;
+}
+.billing-legend .legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.billing-legend .legend-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  display: inline-block;
+}
+.billing-legend .legend-done {
+  background: #22c55e;
+}
+.billing-legend .legend-open {
+  background: #60a5fa;
 }
 .header-search {
   display: flex;
@@ -1636,6 +1458,7 @@ onActivated(() => {
   -webkit-overflow-scrolling: touch;
   cursor: grab;
   scrollbar-width: none;
+  /* 與表身橫向捲動區預留相同捲軸槽，避免表頭／表身可視寬度不一造成月欄與格線錯位 */
   scrollbar-gutter: stable;
 }
 .bytime-thead-scroll.bytime-scroll--drag-disabled,
@@ -1726,6 +1549,7 @@ onActivated(() => {
   color: #4b5563;
   text-align: center;
   vertical-align: middle;
+  /* 與 tbody .bytime-cell-stack 橫向一致，避免月欄格線與表頭文字中心視覺偏移 */
   padding: 8px 6px;
   background: #f9fafb;
 }
@@ -2008,6 +1832,7 @@ onActivated(() => {
   background: #f3f4f6;
 }
 /* 僅月欄 td 需要 position:relative（給載入遮罩）；專案／未排 th,td 必須維持 sticky，勿覆寫成 relative */
+/* 月欄：禁止內容撐寬欄位，否則表身表格總寬會大於表頭，格線與月份對不齊 */
 .bytime-body-row > td.bytime-cell-stack:not(.sticky-col-unsched) {
   position: relative;
   min-width: 0;
@@ -2216,9 +2041,42 @@ onActivated(() => {
   font-size: 13px;
   font-weight: 600;
   color: #111827;
+}
+.billing-bytime-task-name {
+  display: block;
+  width: 100%;
+  max-width: 100%;
   min-width: 0;
-  overflow-wrap: break-word;
+  font-size: 13px;
+  font-weight: 600;
+  color: #4f46e5;
+  text-decoration: none;
+  line-height: 1.35;
   word-break: break-word;
+  overflow-wrap: anywhere;
+}
+.billing-bytime-task-name:hover {
+  text-decoration: underline;
+}
+.task-billing-row {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  font-size: 11px;
+  line-height: 1.35;
+  margin-top: 2px;
+  min-width: 0;
+  max-width: 100%;
+}
+.task-billing-value {
+  font-weight: 700;
+  color: #111827;
+  text-align: right;
+  min-width: 0;
+}
+.task-billing-empty {
+  color: #9ca3af;
+  font-weight: 600;
 }
 .section-due-line {
   font-size: 11px;
@@ -2226,20 +2084,6 @@ onActivated(() => {
   color: #374151;
   margin-top: 2px;
   line-height: 1.35;
-}
-.section-date {
-  font-size: 11px;
-  color: #6b7280;
-  min-width: 0;
-  width: 100%;
-}
-.section-billing {
-  margin-bottom: 2px;
-  font-size: 13px;
-  font-weight: 600;
-  color: #111827;
-  min-width: 0;
-  max-width: 100%;
 }
 .section-bar {
   position: relative;

@@ -150,6 +150,91 @@ function parseBillingFieldEnv(raw: string): { gids: string[]; names: string[] } 
   return { gids, names };
 }
 
+/** 「請款進展」是／否欄位：與 VITE_BILLING_FIELD 相同語法；未設時依名稱「請款進展」「請款任務」 */
+const BILLING_TASK_FIELD_ENV_RAW =
+  typeof import.meta !== "undefined"
+    ? String((import.meta as any).env?.VITE_BILLING_TASK_FIELD ?? "").trim()
+    : "";
+
+const DEFAULT_BILLING_TASK_FIELD_NAMES = ["請款進展", "請款任務"];
+
+const { gids: BILLING_TASK_FIELD_GIDS, names: BILLING_TASK_NAMES_FROM_ENV } =
+  parseBillingFieldEnv(BILLING_TASK_FIELD_ENV_RAW);
+
+function billingTaskNamesToMatch(): string[] {
+  return [
+    ...new Set([...BILLING_TASK_NAMES_FROM_ENV, ...DEFAULT_BILLING_TASK_FIELD_NAMES]),
+  ];
+}
+
+function pickBillingTaskCustomField(
+  customFields: unknown
+): Record<string, unknown> | null {
+  if (!Array.isArray(customFields)) return null;
+
+  if (BILLING_TASK_FIELD_GIDS.length > 0) {
+    const byGid = customFields.find(
+      (cf: any) =>
+        cf &&
+        typeof cf.gid === "string" &&
+        BILLING_TASK_FIELD_GIDS.includes(cf.gid)
+    ) as Record<string, unknown> | undefined;
+    if (byGid) return byGid;
+  }
+
+  const names = billingTaskNamesToMatch();
+  for (const want of names) {
+    const w = normalizeCfName(want).toLowerCase();
+    const found = customFields.find(
+      (cf: any) =>
+        cf &&
+        typeof cf.name === "string" &&
+        normalizeCfName(cf.name).toLowerCase() === w
+    ) as Record<string, unknown> | undefined;
+    if (found) return found;
+  }
+
+  return null;
+}
+
+function customFieldValueIsYes(cf: Record<string, unknown> | null): boolean {
+  if (!cf) return false;
+  const type = typeof cf.type === "string" ? cf.type : "";
+
+  if (type === "boolean") {
+    return cf.boolean_value === true;
+  }
+
+  if (type === "enum") {
+    const ev = cf.enum_value as { name?: string } | null | undefined;
+    if (ev && typeof ev.name === "string") {
+      return isYesToken(ev.name);
+    }
+  }
+
+  if (type === "multi_enum") {
+    const vals = cf.multi_enum_values as { name?: string }[] | undefined;
+    if (Array.isArray(vals)) {
+      return vals.some((v) => v && typeof v.name === "string" && isYesToken(v.name));
+    }
+  }
+
+  if (type === "text" || type === "string") {
+    const tv = cf.text_value as string | undefined;
+    if (typeof tv === "string" && tv.trim() !== "") return isYesToken(tv);
+  }
+
+  const disp = cf.display_value as string | undefined;
+  if (typeof disp === "string" && disp.trim() !== "") return isYesToken(disp);
+
+  return false;
+}
+
+function isYesToken(s: string): boolean {
+  const t = s.trim().toLowerCase();
+  return t === "是" || t === "yes" || t === "y" || t === "true" || t === "1";
+}
+
 const { gids: BILLING_FIELD_GIDS, names: BILLING_NAMES_FROM_ENV } =
   parseBillingFieldEnv(BILLING_FIELD_ENV_RAW);
 
@@ -222,7 +307,7 @@ export async function fetchTasksBySection(
   do {
     const params: Record<string, string> = {
       opt_fields:
-        "gid,name,completed,completed_at,created_at,modified_at,due_on,assignee.name,resource_subtype,permalink_url,custom_fields.gid,custom_fields.name,custom_fields.type,custom_fields.number_value,custom_fields.text_value,custom_fields.display_value",
+        "gid,name,completed,completed_at,created_at,modified_at,due_on,assignee.name,resource_subtype,permalink_url,custom_fields.gid,custom_fields.name,custom_fields.type,custom_fields.number_value,custom_fields.text_value,custom_fields.display_value,custom_fields.boolean_value,custom_fields.enum_value,custom_fields.enum_value.name,custom_fields.multi_enum_values,custom_fields.multi_enum_values.name",
       limit: "100",
     };
     if (offset) params["offset"] = offset;
@@ -232,6 +317,8 @@ export async function fetchTasksBySection(
     const tasks = res.data.data.map((t: any) => {
       const billingField = pickBillingCustomField(t.custom_fields);
       const billingAmountRaw = billingAmountFromCustomField(billingField);
+      const billingTaskField = pickBillingTaskCustomField(t.custom_fields);
+      const billingTaskYes = customFieldValueIsYes(billingTaskField);
 
       const task: AsanaTask = {
         gid: t.gid,
@@ -246,6 +333,7 @@ export async function fetchTasksBySection(
         resource_subtype: (t as any).resource_subtype ?? null,
         permalink_url: t.permalink_url,
         billingAmount: billingAmountRaw,
+        billingTaskYes,
       };
 
       return task;

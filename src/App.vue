@@ -5,10 +5,17 @@ import Login from "@/views/Login.vue";
 import WeeklyTrends from "@/views/WeeklyTrends.vue";
 import ProgressTimeline from "@/views/ProgressTimeline.vue";
 import ProgressTimelineByTime from "@/views/ProgressTimelineByTime.vue";
+import BillingTasks from "@/views/BillingTasks.vue";
+import BillingTasksByTime from "@/views/BillingTasksByTime.vue";
 
 const auth = useAuthStore();
 
-type Tab = "trends" | "progress" | "progressByTime";
+type Tab =
+  | "trends"
+  | "progress"
+  | "progressByTime"
+  | "billingTasks"
+  | "billingTasksByTime";
 
 const currentTab = ref<Tab>("progress");
 
@@ -16,6 +23,8 @@ const tabComponents: Record<Tab, Component> = {
   trends: WeeklyTrends,
   progress: ProgressTimeline,
   progressByTime: ProgressTimelineByTime,
+  billingTasks: BillingTasks,
+  billingTasksByTime: BillingTasksByTime,
 };
 
 const currentView = computed(() => tabComponents[currentTab.value]);
@@ -55,6 +64,22 @@ onMounted(() => {
           @click="currentTab = 'progressByTime'"
         >
           進度·時間序
+        </button>
+        <button
+          type="button"
+          class="nav-tab"
+          :class="{ active: currentTab === 'billingTasks' }"
+          @click="currentTab = 'billingTasks'"
+        >
+          請款進展
+        </button>
+        <button
+          type="button"
+          class="nav-tab"
+          :class="{ active: currentTab === 'billingTasksByTime' }"
+          @click="currentTab = 'billingTasksByTime'"
+        >
+          請款進展·時間序
         </button>
       </div>
       <button

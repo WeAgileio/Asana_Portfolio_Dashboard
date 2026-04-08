@@ -36,6 +36,10 @@ export interface AsanaTask {
   creatorName?: string | null;
   /** 請款金額（來自指定 custom field 的數值） */
   billingAmount?: number | null;
+  /**
+   * 「請款進展」（或舊名「請款任務」）自訂欄位是否為「是」（enum／boolean／文字等由 API 解析）
+   */
+  billingTaskYes?: boolean;
   permalink_url: string;
 }
 
