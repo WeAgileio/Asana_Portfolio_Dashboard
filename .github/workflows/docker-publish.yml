@@ -4,7 +4,8 @@
 #   DOCKERHUB_USERNAME  — Docker Hub 使用者名稱
 #   DOCKERHUB_TOKEN     — Access Token（建議，勿用登入密碼）
 # 選用：
-#   VITE_BILLING_FIELD  — 請款欄位寫入前端建置（與本機 docker build --build-arg 相同）
+#   VITE_BILLING_FIELD       — 請款金額欄位寫入前端建置（與本機 docker build --build-arg 相同）
+#   VITE_BILLING_TASK_FIELD  — 選用；請款進展是／否欄位（與 Dockerfile ARG 相同）
 
 name: Publish Docker image
 
@@ -60,3 +61,4 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           build-args: |
             VITE_BILLING_FIELD=${{ secrets.VITE_BILLING_FIELD }}
+            VITE_BILLING_TASK_FIELD=${{ secrets.VITE_BILLING_TASK_FIELD }}

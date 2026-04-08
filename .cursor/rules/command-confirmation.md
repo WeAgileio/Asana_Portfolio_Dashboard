@@ -178,6 +178,7 @@ feat: 新增了新功能（description 勿用大寫開頭、勿用過去式）
 - `README.md` 中有對應這次版本的 **Release Notes** 區塊或條目，內容至少包含：
   - 本次版本的簡短說明（例如：新增了哪些主要功能或修正了哪些問題）
   - 若有破壞性修改，需在這裡特別標註
+  - 不要描述技術性的調整，只需要描述功能性的
 - 若 `README.md` 尚未有 Release 區塊，先幫使用者在 README 底部加上一個簡單的「Release Notes」章節，然後再加入這次版本的說明。
 - 在建立/推送 tag 及建立 GitHub Release 前，先確認（或補齊）上述 `README.md` 的 Release Notes
 - 在幫忙產生 release 描述或 changelog 時，**優先復用或同步到 `README.md` 的 Release Notes**，避免兩邊內容不一致。

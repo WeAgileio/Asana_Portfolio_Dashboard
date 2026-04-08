@@ -1,6 +1,6 @@
 # Asana 儀表板
 
-以 **Vue 3 + TypeScript + Pinia + Vite** 建置的前端，搭配 **Node.js + Express** 後端處理 Asana OAuth／權杖與 API Proxy。登入後可在同一套介面檢視 **十週任務更新統計**、**專案進度（橫向時間軸）** 與 **進度·時間序（月欄表）**。
+以 **Vue 3 + TypeScript + Pinia + Vite** 建置的前端，搭配 **Node.js + Express** 後端處理 Asana OAuth／權杖與 API Proxy。登入後可在同一套介面檢視 **十週任務更新統計**、**專案進度（橫向時間軸）**、**進度·時間序（月欄表）**、**請款進展** 與 **請款進展·時間序**。
 
 ## 技術棧
 
@@ -35,6 +35,17 @@
 - 同一格內多個 Section **直向堆疊**；卡片上顯示截止日、請款、完成度等。
 - **任務載入中**或整體 **重新載入** 時 **禁止橫向拖曳**，避免與載入狀態衝突。
 
+### 請款進展（橫向列表）
+
+- 與「專案進度」共用 **`useProjectProgress`** 與專案選擇／搜尋／排序。
+- 僅列出任務自訂欄位為「請款進展」（或舊名「請款任務」）且值為「是」的任務；橫向卡片顯示完成狀態、截止日，請款以 **💰** 與金額呈現（不顯示區段名稱）。
+- 需於 `.env` 設定 **`VITE_BILLING_TASK_FIELD`**（可選；未設時依名稱比對「請款進展」「請款任務」），語法與 **`VITE_BILLING_FIELD`** 相同。
+
+### 請款進展·時間序（月欄表）
+
+- 同樣共用 **`useProjectProgress`**；依任務 **截止日** 對齊月份，無截止或落在表格外者進 **未排** 欄。
+- 表頭／表身雙層橫向捲動與「進度·時間序」一致；月欄寬度固定，避免卡片內長文字撐寬欄位導致與表頭錯位。
+
 ### 登入
 
 - 支援 **個人存取權杖（PAT）** 或 **OAuth**（依後端與 Asana 應用設定）。
@@ -59,7 +70,7 @@ npm install
 cp .env.example .env
 ```
 
-**與 `.env.example` 的對應：** 範例檔目前**只有註解**，示範 **`VITE_BILLING_FIELD`** 與 **`DASHBOARD_IMAGE`**。下表其餘鍵請在複製後的 **`.env` 自行補上**（鍵名與下表一致即可）。
+**與 `.env.example` 的對應：** 範例檔以**註解**示範 **`VITE_BILLING_FIELD`**、**`VITE_BILLING_TASK_FIELD`** 與 **`DASHBOARD_IMAGE`**。下表其餘鍵請在複製後的 **`.env` 自行補上**（鍵名與下表一致即可）。
 
 後端（`server/index.mjs` 以 `dotenv` 讀取**專案根目錄** `.env`；`npm run server`／`docker run --env-file .env` 等皆適用）：
 
@@ -79,11 +90,12 @@ cp .env.example .env
 | `ASANA_DEFAULT_PAT` | 後端預設 PAT（僅建議本機開發） |
 | `PORT` | 後端埠號，預設 `3001` |
 
-前端（**本機**由 Vite 讀根目錄 `.env`；`VITE_*` 只在**當次** `dev`／`build` 生效。生產 **Docker 映像**裡的前端已在建置時打進 bundle，請款欄位請用 **`docker build --build-arg VITE_BILLING_FIELD=...`**，見下文〈Docker〉）：
+前端（**本機**由 Vite 讀根目錄 `.env`；`VITE_*` 只在**當次** `dev`／`build` 生效。生產 **Docker 映像**裡的前端已在建置時打進 bundle，請款相關欄位請用 **`docker build --build-arg VITE_BILLING_FIELD=...`** 等，見下文〈Docker〉）：
 
 | 變數 | 說明 |
 |------|------|
-| `VITE_BILLING_FIELD` | **選用。** 請款自訂欄位（**單一變數**）：逗號分隔多個；**純數字**為欄位 **GID**，其餘為**名稱**；比對時 GID 優先。未設時依名稱嘗試「請款金額」「請款額」。例：`請款金額` 或 `請款金額,1234567890123456` |
+| `VITE_BILLING_FIELD` | **選用。** 請款**金額**自訂欄位（**單一變數**）：逗號分隔多個；**純數字**為欄位 **GID**，其餘為**名稱**；比對時 GID 優先。未設時依名稱嘗試「請款金額」「請款額」。例：`請款金額` 或 `請款金額,1234567890123456` |
+| `VITE_BILLING_TASK_FIELD` | **選用。** 「請款進展／請款任務」**是／否**自訂欄位（語法同 `VITE_BILLING_FIELD`）。未設時依名稱比對「請款進展」「請款任務」。 |
 | `VITE_PROXY_TARGET` | 開發時 API Proxy 目標，預設 `http://localhost:3001`；`docker-compose.yml` 的 frontend 服務設為 `http://backend:3001` |
 | `VITE_STORAGE_ENCRYPT_KEY` | 選用；強化前端敏感資料儲存加密（`src/utils/storageEncrypt.ts`） |
 | `VITE_DEFAULT_PROJECT_GID` | 選用；`stores/dashboard` 預設專案 GID |
@@ -149,11 +161,12 @@ docker compose up --build
 
 ### 生產映像（根目錄 `Dockerfile`）
 
-建置並標籤（範例與 Docker Hub 倉庫一致）。請款欄位需寫進前端時請加 **build-arg**（否則用程式內建預設名稱）：
+建置並標籤（範例與 Docker Hub 倉庫一致）。請款相關欄位需寫進前端時請加 **build-arg**（否則用程式內建預設名稱）；**請款進展**是／否欄位可選 **`VITE_BILLING_TASK_FIELD`**：
 
 ```bash
-docker build -t yuminggood/asana_dashboard:latest -t yuminggood/asana_dashboard:1.8.0 \
-  --build-arg VITE_BILLING_FIELD=請款金額 .
+docker build -t yuminggood/asana_dashboard:latest -t yuminggood/asana_dashboard:1.9.0 \
+  --build-arg VITE_BILLING_FIELD=請款金額 \
+  --build-arg VITE_BILLING_TASK_FIELD=請款進展 .
 ```
 
 若要確保可在 **Linux ARM64/v8**（如 Apple Silicon、部分 NAS、雲端 ARM VM）執行，請用 buildx 建置對應平台（或直接建 multi-arch）：
@@ -162,13 +175,15 @@ docker build -t yuminggood/asana_dashboard:latest -t yuminggood/asana_dashboard:
 # 只建 ARM64/v8（可 --load 到本機）
 docker buildx build --platform linux/arm64/v8 \
   -t yuminggood/asana_dashboard:arm64 \
-  --build-arg VITE_BILLING_FIELD=請款金額 .
+  --build-arg VITE_BILLING_FIELD=請款金額 \
+  --build-arg VITE_BILLING_TASK_FIELD=請款進展 .
 
 # 同時建 amd64 + arm64/v8 並推送（推薦給 Docker Hub）
 docker buildx build --platform linux/amd64,linux/arm64/v8 \
   -t yuminggood/asana_dashboard:latest \
-  -t yuminggood/asana_dashboard:1.8.0 \
+  -t yuminggood/asana_dashboard:1.9.0 \
   --build-arg VITE_BILLING_FIELD=請款金額 \
+  --build-arg VITE_BILLING_TASK_FIELD=請款進展 \
   --push .
 ```
 
@@ -176,7 +191,7 @@ docker buildx build --platform linux/amd64,linux/arm64/v8 \
 
 ```bash
 docker push yuminggood/asana_dashboard:latest
-docker push yuminggood/asana_dashboard:1.8.0
+docker push yuminggood/asana_dashboard:1.9.0
 ```
 
 單機執行（前後端同一埠 **3001**）：
@@ -198,6 +213,7 @@ docker run -p 3001:3001 --env-file .env yuminggood/asana_dashboard:latest
 | `DOCKERHUB_USERNAME` | Docker Hub 帳號（與映像前綴一致，例如 `yuminggood`） |
 | `DOCKERHUB_TOKEN` | Docker Hub [Access Token](https://docs.docker.com/security/for-developers/access-tokens/)（勿用一般登入密碼） |
 | `VITE_BILLING_FIELD` | **選用。** 與本機 `--build-arg VITE_BILLING_FIELD=…` 相同，寫入前端建置 |
+| `VITE_BILLING_TASK_FIELD` | **選用。** 請款進展是／否欄位；與本機 `--build-arg` 相同。Release 建置時由 [docker-publish workflow](.github/workflows/docker-publish.yml) 傳入（未設 Secret 時為空，使用程式預設名稱）。 |
 
 ### 正式環境 Compose（`docker-compose.prod.yml`）
 
@@ -229,7 +245,9 @@ src/
 │   ├── Login.vue
 │   ├── WeeklyTrends.vue      # 十週更新統計
 │   ├── ProgressTimeline.vue  # 專案進度（橫向）
-│   └── ProgressTimelineByTime.vue  # 進度·時間序（月欄）
+│   ├── ProgressTimelineByTime.vue  # 進度·時間序（月欄）
+│   ├── BillingTasks.vue      # 請款進展（橫向）
+│   └── BillingTasksByTime.vue      # 請款進展·時間序（月欄）
 ├── App.vue                   # 頂部導覽與分頁
 └── main.ts
 
@@ -249,7 +267,14 @@ docker-compose.prod.yml
 
 ## 版本紀錄
 
-### v1.8.0（目前 `package.json` 版本）
+### v1.9.0（目前 `package.json` 版本）
+
+- **請款進展／請款進展·時間序**：新分頁；任務欄位「請款進展」（或舊名「請款任務」）為是者列入；共用 `useProjectProgress`；時間序依**任務截止日**分月欄，表頭／表身欄寬鎖定避免內容撐寬錯位。
+- **環境變數**：**`VITE_BILLING_TASK_FIELD`**（語法同 `VITE_BILLING_FIELD`）；**Docker** `Dockerfile` 支援 **`ARG VITE_BILLING_TASK_FIELD`**；`.env.example` 補註解。
+- **進度·時間序**：與請款時間序共用之表格樣式修正（捲軸槽、欄寬、`box-sizing` 等）。
+- **Docker 映像**：`yuminggood/asana_dashboard`（例：`latest`、`1.9.0`）；**linux/amd64** 與 **linux/arm64/v8**（見上文 Docker 章節）。
+
+### v1.8.0
 
 - **頂部導覽**：移除「Asana 儀表板」標題；分頁以**紫底白字**標示目前頁；**登出**獨立於右側。
 - **專案進度／進度·時間序**：工具列改為**左右分區**（左：排序與搜尋；右：狀態圖例與日期／按鈕）；移除頁首標題區與「專案搜尋」文字標籤（搜尋框保留 placeholder 與 `aria-label`）。
@@ -324,7 +349,7 @@ docker-compose.prod.yml
 
 - **進度·時間序**：月欄表、未排欄、固定表頭、表頭／表身橫向捲動同步、欄寬與格線對齊。
 - **共用**：`useProjectProgress` 供「專案進度」與「進度·時間序」共用。
-- **請款**：單一環境變數 `VITE_BILLING_FIELD`（名稱與 GID 可混寫，見上文）。
+- **請款**：`VITE_BILLING_FIELD`（金額）；**v1.9.0** 起另支援 `VITE_BILLING_TASK_FIELD`（請款進展是／否，見上文）。
 - **操作**：橫向拖曳捲動；載入中禁止拖曳。
 - **Docker 映像**：`yuminggood/asana_dashboard`（例：`latest`、`1.1.0`）。
 
