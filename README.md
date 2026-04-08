@@ -152,7 +152,7 @@ docker compose up --build
 建置並標籤（範例與 Docker Hub 倉庫一致）。請款欄位需寫進前端時請加 **build-arg**（否則用程式內建預設名稱）：
 
 ```bash
-docker build -t yuminggood/asana_dashboard:latest -t yuminggood/asana_dashboard:1.7.0 \
+docker build -t yuminggood/asana_dashboard:latest -t yuminggood/asana_dashboard:1.8.0 \
   --build-arg VITE_BILLING_FIELD=請款金額 .
 ```
 
@@ -167,7 +167,7 @@ docker buildx build --platform linux/arm64/v8 \
 # 同時建 amd64 + arm64/v8 並推送（推薦給 Docker Hub）
 docker buildx build --platform linux/amd64,linux/arm64/v8 \
   -t yuminggood/asana_dashboard:latest \
-  -t yuminggood/asana_dashboard:1.7.0 \
+  -t yuminggood/asana_dashboard:1.8.0 \
   --build-arg VITE_BILLING_FIELD=請款金額 \
   --push .
 ```
@@ -176,7 +176,7 @@ docker buildx build --platform linux/amd64,linux/arm64/v8 \
 
 ```bash
 docker push yuminggood/asana_dashboard:latest
-docker push yuminggood/asana_dashboard:1.7.0
+docker push yuminggood/asana_dashboard:1.8.0
 ```
 
 單機執行（前後端同一埠 **3001**）：
@@ -249,7 +249,14 @@ docker-compose.prod.yml
 
 ## 版本紀錄
 
-### v1.7.0（目前 `package.json` 版本）
+### v1.8.0（目前 `package.json` 版本）
+
+- **頂部導覽**：移除「Asana 儀表板」標題；分頁以**紫底白字**標示目前頁；**登出**獨立於右側。
+- **專案進度／進度·時間序**：工具列改為**左右分區**（左：排序與搜尋；右：狀態圖例與日期／按鈕）；移除頁首標題區與「專案搜尋」文字標籤（搜尋框保留 placeholder 與 `aria-label`）。
+- **狀態圖例**：抽出為 **`ProgressStatusLegend`**；視窗寬度 **≤1250px** 時改為「狀態圖例」按鈕＋彈窗；較窄寬度時工具列可直向堆疊。
+- **Docker 映像**：`yuminggood/asana_dashboard`（例：`latest`、`1.8.0`）；**linux/amd64** 與 **linux/arm64/v8**（見上文 Docker 章節）。
+
+### v1.7.0
 
 - **進度·時間序（未排欄）**：表頭與收合格顯示 **已完成／未排總數**；**點各專案列未排格**僅展開該專案之 section 卡片（同時間僅一列展開）；**點表頭「未排」**可收合；篩選後若該專案不在清單內會自動收合。
 - **Docker 映像**：`yuminggood/asana_dashboard`（例：`latest`、`1.7.0`）；**linux/amd64** 與 **linux/arm64/v8**（見上文 Docker 章節）。
