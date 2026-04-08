@@ -6,6 +6,7 @@ import {
   type SectionProgress,
 } from "@/composables/useProjectProgress";
 import ScrollToTopButton from "@/components/ScrollToTopButton.vue";
+import ProgressStatusLegend from "@/components/ProgressStatusLegend.vue";
 import ProjectSortControl from "@/components/ProjectSortControl.vue";
 import {
   applyProjectNameSort,
@@ -135,83 +136,54 @@ const filteredDisplayItems = computed(() => {
 <template>
   <div class="progress-page">
     <header class="page-header">
-      <div class="title-block">
-        <h1>專案進度</h1>
-        <p class="title-block-desc">
-          以 Asana 專案與 section 為單位，根據任務完成率與里程碑截止日展示專案進度。
-        </p>
-      </div>
-
-      <div
-        v-if="!error"
-        class="page-header-center"
-      >
-        <div class="header-search">
-          <ProjectSortControl v-model="projectNameSortOrder" :disabled="loading" />
+      <div class="page-header-toolbar">
+        <div class="toolbar-left">
+          <div v-if="!error" class="header-search">
+            <ProjectSortControl v-model="projectNameSortOrder" :disabled="loading" />
           <span class="header-search-divider" role="separator" aria-hidden="true" />
-          <label class="project-search-label" for="project-search-input">專案搜尋</label>
           <input
             id="project-search-input"
             v-model="projectSearchQuery"
             type="search"
             class="project-search-input"
+            aria-label="依專案名稱篩選，留空顯示全部"
             placeholder="輸入關鍵字篩選專案名稱，留空顯示全部"
-            autocomplete="off"
-            spellcheck="false"
-            :disabled="loading"
-          />
-        </div>
-      </div>
-
-      <div class="page-header-right">
-        <div class="legend-header" aria-label="狀態圖例">
-          <div class="legend-row">
-            <span class="legend-item">
-              <span class="legend-dot legend-not-started" /> 尚未開始
-            </span>
-            <span class="legend-item">
-              <span class="legend-dot legend-progress" /> 進行中
-            </span>
-            <span class="legend-item">
-              <span class="legend-dot legend-done" /> 已完成
-            </span>
-          </div>
-          <div class="legend-row">
-            <span class="legend-item">
-              <span class="legend-dot legend-behind" /> 延後（一週內截止未完成）
-            </span>
-            <span class="legend-item">
-              <span class="legend-dot legend-at-risk" /> 風險（兩週內截止且逾 1/4 未完成）
-            </span>
+              autocomplete="off"
+              spellcheck="false"
+              :disabled="loading"
+            />
           </div>
         </div>
-        <div class="meta-right">
-          <div class="date-label">日期：{{ todayLabel() }}</div>
-          <button
-            type="button"
-            class="reload-btn"
-            :disabled="loading"
-            @click="loadProgress()"
-          >
-            {{ loading ? "載入中…" : "重新載入" }}
-          </button>
-          <button
-            type="button"
-            class="resync-btn"
-            :disabled="loading"
-            title="略過伺服器快取，向 Asana 重新拉取最新資料"
-            @click="loadProgress({ bypassProxyCache: true })"
-          >
-            {{ loading ? "載入中…" : "重新同步數據" }}
-          </button>
-          <button
-            type="button"
-            class="secondary-btn"
-            :disabled="projectsOptionsLoading || loading"
-            @click="projectPickerOpen = true"
-          >
-            選擇專案
-          </button>
+        <div class="toolbar-right">
+          <ProgressStatusLegend />
+          <div class="meta-right">
+            <div class="date-label">日期：{{ todayLabel() }}</div>
+            <button
+              type="button"
+              class="reload-btn"
+              :disabled="loading"
+              @click="loadProgress()"
+            >
+              {{ loading ? "載入中…" : "重新載入" }}
+            </button>
+            <button
+              type="button"
+              class="resync-btn"
+              :disabled="loading"
+              title="略過伺服器快取，向 Asana 重新拉取最新資料"
+              @click="loadProgress({ bypassProxyCache: true })"
+            >
+              {{ loading ? "載入中…" : "重新同步數據" }}
+            </button>
+            <button
+              type="button"
+              class="secondary-btn"
+              :disabled="projectsOptionsLoading || loading"
+              @click="projectPickerOpen = true"
+            >
+              選擇專案
+            </button>
+          </div>
         </div>
       </div>
     </header>
@@ -597,52 +569,31 @@ const filteredDisplayItems = computed(() => {
 }
 .page-header {
   box-sizing: border-box;
-  min-height: 76px;
-  padding: 8px 20px;
+  padding: 10px 20px;
   background: #fff;
   border-bottom: 1px solid #e5e7eb;
+}
+.page-header-toolbar {
   display: flex;
   flex-direction: row;
-  flex-wrap: nowrap;
   align-items: center;
-  gap: 12px 20px;
+  justify-content: space-between;
+  width: 100%;
+  gap: 12px 16px;
+  flex-wrap: wrap;
 }
-.title-block {
-  display: flex;
-  flex-direction: row;
-  align-items: flex-start;
-  gap: 10px 14px;
-  flex: 0 1 auto;
-  min-width: 0;
-  max-width: min(480px, 40vw);
-}
-.title-block h1 {
-  margin: 0;
-  font-size: 15px;
-  font-weight: 800;
-  color: #111827;
-  white-space: nowrap;
-  flex-shrink: 0;
-  line-height: 1.2;
-}
-.title-block-desc {
-  margin: 0;
-  font-size: 12px;
-  line-height: 1.4;
-  color: #6b7280;
+.toolbar-left {
   flex: 1 1 auto;
   min-width: 0;
-  display: -webkit-box;
-  -webkit-line-clamp: 3;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
 }
-.page-header-center {
+.toolbar-right {
   display: flex;
   flex-direction: row;
   align-items: center;
-  justify-content: flex-start;
-  flex: 1 1 320px;
+  gap: 12px 20px;
+  flex: 0 1 auto;
+  flex-wrap: wrap;
+  justify-content: flex-end;
   min-width: 0;
 }
 .header-search {
@@ -678,89 +629,32 @@ const filteredDisplayItems = computed(() => {
   flex: 1 1 200px;
   min-width: min(100%, 320px);
 }
-.page-header-right {
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  gap: 12px 16px;
-  flex-shrink: 0;
-  margin-left: auto;
-}
-.legend-header {
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  gap: 3px;
-  font-size: 12px;
-  line-height: 1.35;
-  color: #4b5563;
-}
-.legend-row {
-  display: flex;
-  flex-wrap: nowrap;
-  align-items: center;
-  gap: 6px 10px;
-}
-.page-header-right .legend-dot {
-  width: 11px;
-  height: 11px;
-}
 .meta-right {
   display: flex;
   align-items: center;
   gap: 10px;
   flex-shrink: 0;
 }
-@media (min-width: 1200px) {
-  .title-block {
-    flex: 0 0 480px;
-    min-width: 480px;
-    max-width: 480px;
-  }
-  .title-block-desc {
-    display: block;
-    -webkit-line-clamp: unset;
-    -webkit-box-orient: unset;
-    overflow: visible;
-  }
-  .page-header-center {
-    margin-left: 20px;
-    padding-left: 4px;
-  }
-}
 @media (max-width: 1199px) {
   .page-header {
-    flex-wrap: wrap;
-    min-height: 0;
     padding: 10px 16px;
   }
-  .title-block {
-    max-width: none;
-    flex: 1 1 100%;
-    min-width: 0;
+}
+@media (max-width: 900px) {
+  .page-header-toolbar {
+    flex-direction: column;
+    align-items: stretch;
   }
-  .page-header-center {
-    flex: 1 1 100%;
-    justify-content: flex-start;
-  }
-  .page-header-right {
-    margin-left: 0;
-    flex: 1 1 100%;
-    flex-wrap: wrap;
+  .toolbar-right {
     justify-content: space-between;
+    width: 100%;
+  }
+  .meta-right {
+    flex-wrap: wrap;
+    justify-content: flex-end;
   }
 }
 @media (max-width: 640px) {
-  .title-block {
-    flex-direction: column;
-    align-items: flex-start;
-  }
-  .title-block h1 {
-    white-space: normal;
-  }
-  .title-block-desc {
-    -webkit-line-clamp: 5;
-  }
   .header-search {
     flex-wrap: wrap;
   }
@@ -769,15 +663,7 @@ const filteredDisplayItems = computed(() => {
     flex-grow: 1;
     min-width: 0;
   }
-  .legend-row {
-    flex-wrap: wrap;
-  }
-  .page-header-right {
-    flex-direction: column;
-    align-items: stretch;
-  }
   .meta-right {
-    flex-wrap: wrap;
     justify-content: flex-start;
   }
 }
@@ -832,13 +718,6 @@ const filteredDisplayItems = computed(() => {
 .page-main {
   flex: 1;
   padding: 20px 24px 32px;
-}
-.project-search-label {
-  flex: 0 0 auto;
-  font-size: 12px;
-  font-weight: 600;
-  color: #374151;
-  white-space: nowrap;
 }
 .project-search-input {
   flex: 1;
@@ -1500,10 +1379,6 @@ const filteredDisplayItems = computed(() => {
   color: #b91c1c;
 }
 @media (max-width: 768px) {
-  .page-header {
-    flex-direction: column;
-    align-items: flex-start;
-  }
   .project-filter {
     flex-direction: column;
     align-items: flex-start;

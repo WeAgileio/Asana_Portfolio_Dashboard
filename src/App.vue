@@ -30,13 +30,10 @@ onMounted(() => {
     <div v-if="!auth.initialized" class="app-loading">載入中…</div>
     <Login v-else-if="!auth.isLoggedIn" />
     <template v-else>
-    <nav class="top-nav">
-      <div class="nav-left">
-        <span class="logo-dot" />
-        <span class="nav-title">Asana 儀表板</span>
-      </div>
+    <nav class="top-nav" aria-label="主要導覽">
       <div class="nav-tabs">
         <button
+          type="button"
           class="nav-tab"
           :class="{ active: currentTab === 'trends' }"
           @click="currentTab = 'trends'"
@@ -44,6 +41,7 @@ onMounted(() => {
           十週更新統計
         </button>
         <button
+          type="button"
           class="nav-tab"
           :class="{ active: currentTab === 'progress' }"
           @click="currentTab = 'progress'"
@@ -51,20 +49,21 @@ onMounted(() => {
           專案進度
         </button>
         <button
+          type="button"
           class="nav-tab"
           :class="{ active: currentTab === 'progressByTime' }"
           @click="currentTab = 'progressByTime'"
         >
           進度·時間序
         </button>
-        <button
-          type="button"
-          class="nav-tab nav-logout"
-          @click="auth.clearToken()"
-        >
-          登出
-        </button>
       </div>
+      <button
+        type="button"
+        class="nav-logout"
+        @click="auth.clearToken()"
+      >
+        登出
+      </button>
     </nav>
 
     <main class="app-main">
@@ -83,51 +82,56 @@ onMounted(() => {
   flex-direction: column;
 }
 .top-nav {
-  height: 52px;
-  padding: 0 20px;
+  min-height: 52px;
+  padding: 8px 20px;
   display: flex;
+  flex-direction: row;
   align-items: center;
   justify-content: space-between;
+  gap: 12px 20px;
   border-bottom: 1px solid #e5e7eb;
   background: #ffffff;
 }
-.nav-left {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-.logo-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 999px;
-  background: #4f46e5;
-}
-.nav-title {
-  font-size: 14px;
-  font-weight: 700;
-  color: #111827;
-}
 .nav-tabs {
   display: flex;
-  gap: 6px;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 10px;
+  min-width: 0;
 }
 .nav-tab {
   border: none;
   background: transparent;
-  padding: 6px 10px;
+  padding: 8px 14px;
   border-radius: 999px;
-  font-size: 12px;
+  font-size: 13px;
   color: #6b7280;
   cursor: pointer;
+  font-weight: 500;
+  line-height: 1.2;
+}
+.nav-tab:hover {
+  color: #374151;
+  background: #f3f4f6;
 }
 .nav-tab.active {
-  background: #eef2ff;
-  color: #4f46e5;
+  background: #4f46e5;
+  color: #ffffff;
   font-weight: 600;
 }
+.nav-tab.active:hover {
+  background: #4338ca;
+  color: #ffffff;
+}
 .nav-logout {
-  margin-left: auto;
+  flex-shrink: 0;
+  border: none;
+  background: transparent;
+  padding: 6px 10px;
+  font-size: 13px;
   color: #6b7280;
+  cursor: pointer;
+  border-radius: 6px;
 }
 .nav-logout:hover {
   color: #dc2626;
