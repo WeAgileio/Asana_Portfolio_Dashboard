@@ -6,6 +6,17 @@ export interface AsanaProject {
   archived?: boolean;
   /** ISO 建立時間，用於專案清單排序 */
   created_at?: string | null;
+  /** 專案所屬 workspace／organization 的 GID，用於組合網址 */
+  workspace_gid?: string | null;
+  /**
+   * 專案 **Notes（新 UI 為 project brief）** 頁的永久連結；與
+   * `https://app.asana.com/1/…/project/…/note/…` 同級。
+   */
+  notes_permalink_url?: string | null;
+  /** 對應 Notes／brief 資源的 GID，無則可能尚未建立 brief */
+  project_brief_gid?: string | null;
+  /** 專案本身永久連結（多為列表／概覽），作為無 brief 時的後備 */
+  project_permalink_url?: string | null;
 }
 
 export interface AsanaSection {

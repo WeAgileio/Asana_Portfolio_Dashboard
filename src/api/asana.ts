@@ -66,7 +66,8 @@ export async function fetchProjects(): Promise<AsanaProject[]> {
     do {
       const params: Record<string, string> = {
         workspace: ws.gid,
-        opt_fields: "gid,name,color,archived,created_at",
+        opt_fields:
+          "gid,name,color,archived,created_at,workspace,workspace.gid,permalink_url,project_brief,project_brief.gid,project_brief.permalink_url",
         limit: "100",
       };
       if (offset) params["offset"] = offset;
@@ -78,6 +79,10 @@ export async function fetchProjects(): Promise<AsanaProject[]> {
         color: p.color ?? null,
         archived: !!p.archived,
         created_at: p.created_at ?? null,
+        workspace_gid: p.workspace?.gid ?? null,
+        notes_permalink_url: p.project_brief?.permalink_url ?? null,
+        project_brief_gid: p.project_brief?.gid ?? null,
+        project_permalink_url: p.permalink_url ?? null,
       }));
       for (const p of page) {
         byGid.set(p.gid, p);
@@ -104,7 +109,10 @@ export async function fetchProjects(): Promise<AsanaProject[]> {
 
 export async function fetchProject(projectGid: string): Promise<AsanaProject> {
   const res = await api.get(`/projects/${projectGid}`, {
-    params: { opt_fields: "gid,name,color,archived,created_at" },
+    params: {
+      opt_fields:
+        "gid,name,color,archived,created_at,workspace,workspace.gid,permalink_url,project_brief,project_brief.gid,project_brief.permalink_url",
+    },
   });
   const p = res.data.data;
   return {
@@ -113,6 +121,10 @@ export async function fetchProject(projectGid: string): Promise<AsanaProject> {
     color: p.color ?? null,
     archived: !!p.archived,
     created_at: p.created_at ?? null,
+    workspace_gid: p.workspace?.gid ?? null,
+    notes_permalink_url: p.project_brief?.permalink_url ?? null,
+    project_brief_gid: p.project_brief?.gid ?? null,
+    project_permalink_url: p.permalink_url ?? null,
   };
 }
 

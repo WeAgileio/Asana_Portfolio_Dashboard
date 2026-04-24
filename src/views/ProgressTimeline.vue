@@ -12,6 +12,7 @@ import {
   applyProjectNameSort,
   type ProjectNameSortOrder,
 } from "@/utils/projectDisplaySort";
+import { asanaProjectNotesUrl } from "@/utils/asanaUrls";
 
 const isDraggingTimeline = ref(false);
 const dragStartX = ref(0);
@@ -278,9 +279,17 @@ const filteredDisplayItems = computed(() => {
           <div class="project-name">
             <div class="project-name-text">
               <div class="project-title-row">
-                <span class="project-name-label">
+                <a
+                  class="project-name-link project-name-label"
+                  :href="asanaProjectNotesUrl(item.project)"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  :title="'在 Asana 開啟專案 Notes（備註）'"
+                  :aria-label="'在 Asana 開啟專案：' + item.project.name"
+                  @click.stop
+                >
                   {{ item.project.name }}
-                </span>
+                </a>
                 <button
                   type="button"
                   class="project-reload-btn"
@@ -787,6 +796,21 @@ const filteredDisplayItems = computed(() => {
   justify-content: center;
   gap: 6px;
   max-width: 100%;
+}
+.project-name-link.project-name-label {
+  display: block;
+  min-width: 0;
+  max-width: 100%;
+  text-decoration: none;
+  color: inherit;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.project-name-link.project-name-label:hover {
+  color: #4f46e5;
+  text-decoration: underline;
 }
 .project-name-label {
   white-space: nowrap;
