@@ -284,7 +284,7 @@ const filteredDisplayItems = computed(() => {
                   :href="asanaProjectNotesUrl(item.project)"
                   target="_blank"
                   rel="noopener noreferrer"
-                  :title="'在 Asana 開啟專案 Notes（備註）'"
+                  :title="'在 Asana 開啟專案狀態'"
                   :aria-label="'在 Asana 開啟專案：' + item.project.name"
                   @click.stop
                 >

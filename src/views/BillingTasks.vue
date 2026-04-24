@@ -299,7 +299,7 @@ const billingRows = computed(() => {
                   :href="asanaProjectNotesUrl(row.progress.project)"
                   target="_blank"
                   rel="noopener noreferrer"
-                  :title="'在 Asana 開啟專案 Notes（備註）'"
+                  :title="'在 Asana 開啟專案狀態'"
                   :aria-label="'在 Asana 開啟專案：' + row.progress.project.name"
                   @click.stop
                 >
