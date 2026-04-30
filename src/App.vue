@@ -3,7 +3,6 @@ import { ref, computed, onMounted, type Component } from "vue";
 import { useAuthStore } from "@/stores/auth";
 import Login from "@/views/Login.vue";
 import WeeklyTrends from "@/views/WeeklyTrends.vue";
-import ProgressTimeline from "@/views/ProgressTimeline.vue";
 import ProgressTimelineByTime from "@/views/ProgressTimelineByTime.vue";
 import BillingTasks from "@/views/BillingTasks.vue";
 import BillingTasksByTime from "@/views/BillingTasksByTime.vue";
@@ -12,16 +11,14 @@ const auth = useAuthStore();
 
 type Tab =
   | "trends"
-  | "progress"
   | "progressByTime"
   | "billingTasks"
   | "billingTasksByTime";
 
-const currentTab = ref<Tab>("progress");
+const currentTab = ref<Tab>("progressByTime");
 
 const tabComponents: Record<Tab, Component> = {
   trends: WeeklyTrends,
-  progress: ProgressTimeline,
   progressByTime: ProgressTimelineByTime,
   billingTasks: BillingTasks,
   billingTasksByTime: BillingTasksByTime,
@@ -52,18 +49,10 @@ onMounted(() => {
         <button
           type="button"
           class="nav-tab"
-          :class="{ active: currentTab === 'progress' }"
-          @click="currentTab = 'progress'"
-        >
-          專案進度
-        </button>
-        <button
-          type="button"
-          class="nav-tab"
           :class="{ active: currentTab === 'progressByTime' }"
           @click="currentTab = 'progressByTime'"
         >
-          進度·時間序
+          專案進展
         </button>
         <button
           type="button"

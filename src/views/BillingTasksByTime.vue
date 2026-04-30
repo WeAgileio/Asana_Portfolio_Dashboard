@@ -428,6 +428,28 @@ const monthColumnBillingTaskStatusCounts = computed(() => {
   return counts;
 });
 
+/** 各月欄表頭：已請款金額／目標請款金額（跨所有專案加總） */
+const monthColumnBillingAmounts = computed(() => {
+  const amounts: Record<string, { collected: number; total: number }> = {};
+
+  for (const col of monthColumns.value) {
+    let collected = 0;
+    let total = 0;
+    for (const item of searchFilteredDisplayItems.value) {
+      for (const cell of billingTasksInCell(item, col.key)) {
+        const amount =
+          typeof cell.task.billingAmount === "number" ? cell.task.billingAmount : 0;
+        if (!amount) continue;
+        total += amount;
+        if (cell.task.completed) collected += amount;
+      }
+    }
+    amounts[col.key] = { collected, total };
+  }
+
+  return amounts;
+});
+
 /** 左側專案欄：該專案請款進展統計 */
 function projectBillingTaskStatusCounts(item: ProjectProgress): {
   total: number;
@@ -878,6 +900,24 @@ onActivated(() => {
                           title="未完成"
                         >
                           {{ monthColumnBillingTaskStatusCounts[col.key]?.open ?? 0 }}
+                        </span>
+                      </div>
+                      <div class="th-month-billing-row" aria-label="已請款／目標請款金額">
+                        <span class="th-month-billing-collected">
+                          💰
+                          {{
+                            (
+                              monthColumnBillingAmounts[col.key]?.collected ?? 0
+                            ).toLocaleString("zh-TW")
+                          }}
+                        </span>
+                        <span class="th-month-billing-slash" aria-hidden="true">/</span>
+                        <span class="th-month-billing-total">
+                          {{
+                            (
+                              monthColumnBillingAmounts[col.key]?.total ?? 0
+                            ).toLocaleString("zh-TW")
+                          }}
                         </span>
                       </div>
                     </div>
@@ -1611,6 +1651,28 @@ onActivated(() => {
   align-items: center;
   line-height: 1;
   white-space: nowrap;
+}
+.th-month-billing-row {
+  display: inline-flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #374151;
+  line-height: 1.15;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.th-month-billing-collected {
+  color: #16a34a;
+}
+.th-month-billing-slash {
+  color: #9ca3af;
+  font-weight: 600;
+}
+.th-month-billing-total {
+  color: #111827;
 }
 .th-month-status-not-started {
   color: #9ca3af;
