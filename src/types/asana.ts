@@ -17,6 +17,8 @@ export interface AsanaProject {
   project_brief_gid?: string | null;
   /** 專案本身永久連結（多為列表／概覽），作為無 brief 時的後備 */
   project_permalink_url?: string | null;
+  /** 專案成員顯示名稱（來自 GET project(s) 的 `members`） */
+  memberNames?: string[];
 }
 
 export interface AsanaSection {

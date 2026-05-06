@@ -2,6 +2,7 @@ import { ref, computed, watch, nextTick, onUnmounted } from "vue";
 import { useAuthStore } from "@/stores/auth";
 import {
   fetchProjects,
+  fetchProject,
   fetchSectionsByProject,
   fetchTasksBySection,
   popAsanaProxyCacheBypass,
@@ -374,6 +375,15 @@ async function reloadProjectProgress(
     const sections = await fetchSectionsByProject(projectGid);
     if (projectReloadSeqByGid.get(projectGid) !== seq) return;
 
+    let projectMeta = snapshot.project;
+    try {
+      const latest = await fetchProject(projectGid);
+      if (projectReloadSeqByGid.get(projectGid) !== seq) return;
+      projectMeta = { ...snapshot.project, ...latest };
+    } catch {
+      // 略過：仍用舊的專案資料
+    }
+
     const existingSectionByGid = new Map(
       snapshot.sections.map((sp) => [sp.section.gid, sp] as const)
     );
@@ -384,7 +394,7 @@ async function reloadProjectProgress(
     );
 
     items.value[idx] = {
-      project: snapshot.project,
+      project: projectMeta,
       sections: mergedSections,
       loadingTasks: true,
     };
@@ -407,7 +417,7 @@ async function reloadProjectProgress(
     if (idxAfter < 0) return;
 
     items.value[idxAfter] = {
-      project: snapshot.project,
+      project: projectMeta,
       sections: sectionProgressList,
       loadingTasks: false,
     };

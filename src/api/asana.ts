@@ -56,6 +56,18 @@ async function fetchWorkspaces(): Promise<{ gid: string }[]> {
   return (res.data.data ?? []).map((w: { gid: string }) => ({ gid: w.gid }));
 }
 
+/** 見 GET project(s)：`members` 為專案成員（UserCompact）列表 */
+function memberNamesFromProjectPayload(p: any): string[] {
+  const raw = p.members;
+  if (!Array.isArray(raw)) return [];
+  const names = raw
+    .map((u: any) => (u && typeof u.name === "string" ? u.name.trim() : ""))
+    .filter(Boolean);
+  return Array.from(new Set(names));
+}
+
+const PROJECT_MEMBERS_OPT = "members,members.name";
+
 /** 依 workspace 分頁取得「全部」專案（Asana 要求分頁時必須指定 workspace） */
 export async function fetchProjects(): Promise<AsanaProject[]> {
   const workspaces = await fetchWorkspaces();
@@ -67,7 +79,8 @@ export async function fetchProjects(): Promise<AsanaProject[]> {
       const params: Record<string, string> = {
         workspace: ws.gid,
         opt_fields:
-          "gid,name,color,archived,created_at,workspace,workspace.gid,permalink_url,project_brief,project_brief.gid,project_brief.permalink_url",
+          "gid,name,color,archived,created_at,workspace,workspace.gid,permalink_url,project_brief,project_brief.gid,project_brief.permalink_url," +
+          PROJECT_MEMBERS_OPT,
         limit: "100",
       };
       if (offset) params["offset"] = offset;
@@ -83,6 +96,7 @@ export async function fetchProjects(): Promise<AsanaProject[]> {
         notes_permalink_url: p.project_brief?.permalink_url ?? null,
         project_brief_gid: p.project_brief?.gid ?? null,
         project_permalink_url: p.permalink_url ?? null,
+        memberNames: memberNamesFromProjectPayload(p),
       }));
       for (const p of page) {
         byGid.set(p.gid, p);
@@ -111,7 +125,8 @@ export async function fetchProject(projectGid: string): Promise<AsanaProject> {
   const res = await api.get(`/projects/${projectGid}`, {
     params: {
       opt_fields:
-        "gid,name,color,archived,created_at,workspace,workspace.gid,permalink_url,project_brief,project_brief.gid,project_brief.permalink_url",
+        "gid,name,color,archived,created_at,workspace,workspace.gid,permalink_url,project_brief,project_brief.gid,project_brief.permalink_url," +
+        PROJECT_MEMBERS_OPT,
     },
   });
   const p = res.data.data;
@@ -125,6 +140,7 @@ export async function fetchProject(projectGid: string): Promise<AsanaProject> {
     notes_permalink_url: p.project_brief?.permalink_url ?? null,
     project_brief_gid: p.project_brief?.gid ?? null,
     project_permalink_url: p.permalink_url ?? null,
+    memberNames: memberNamesFromProjectPayload(p),
   };
 }
 

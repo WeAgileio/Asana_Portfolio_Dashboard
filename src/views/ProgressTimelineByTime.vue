@@ -49,13 +49,89 @@ const projectSearchQuery = ref("");
 const projectNameSortOrder = ref<ProjectNameSortOrder>("default");
 /** 點擊月欄表頭後，將該月欄內有 section 的專案列排到最上（再點同一欄取消） */
 const prioritizeMonthKey = ref<string | null>(null);
+/** 專案角色篩選：依 GET project(s) 回傳之 `members` 成員姓名 */
+const selectedProjectRoleNames = ref<string[]>([]);
+const rolePeoplePickerOpen = ref(false);
+const rolePeopleTriggerEl = ref<HTMLElement | null>(null);
+const rolePeoplePanelPos = ref<{ top: number; left: number; width: number }>({
+  top: 0,
+  left: 0,
+  width: 360,
+});
+
+/** 專案成員（GET project(s) `members.name`），用於頂部角色篩選 */
+function overviewRoleNamesForItem(item: ProjectProgress): Set<string> {
+  return new Set(
+    (item.project.memberNames ?? [])
+      .map((n) => n.trim())
+      .filter(Boolean)
+  );
+}
+
+const projectRoleOptions = computed(() => {
+  const roles = new Set<string>();
+  for (const item of displayItems.value) {
+    for (const r of overviewRoleNamesForItem(item)) roles.add(r);
+  }
+  return Array.from(roles).sort((a, b) => a.localeCompare(b, "zh-Hant"));
+});
+
+function clearProjectRoleFilter() {
+  selectedProjectRoleNames.value = [];
+}
+
+function updateRolePeoplePanelPos() {
+  const el = rolePeopleTriggerEl.value;
+  if (!el) return;
+  const rect = el.getBoundingClientRect();
+  const gap = 8;
+  const maxWidth = Math.min(360, window.innerWidth - 40);
+  // 讓彈窗「往右展開」：左緣對齊按鈕左側（並做視窗邊界夾取）
+  const left = Math.max(20, Math.min(rect.left, window.innerWidth - 20 - maxWidth));
+  rolePeoplePanelPos.value = {
+    top: rect.bottom + gap,
+    left,
+    width: maxWidth,
+  };
+}
+
+watch(rolePeoplePickerOpen, (open) => {
+  if (!open) return;
+  nextTick(() => {
+    updateRolePeoplePanelPos();
+  });
+});
+
+function onWindowReposition() {
+  if (!rolePeoplePickerOpen.value) return;
+  updateRolePeoplePanelPos();
+}
+
+onMounted(() => {
+  window.addEventListener("resize", onWindowReposition);
+  window.addEventListener("scroll", onWindowReposition, { capture: true });
+});
+
+onUnmounted(() => {
+  window.removeEventListener("resize", onWindowReposition);
+  window.removeEventListener("scroll", onWindowReposition, { capture: true } as any);
+});
 
 const searchFilteredDisplayItems = computed(() => {
+  const picked = selectedProjectRoleNames.value;
+  const pickedSet = picked.length > 0 ? new Set(picked) : null;
   const q = projectSearchQuery.value.trim().toLowerCase();
-  if (!q) return displayItems.value;
-  return displayItems.value.filter((item) =>
-    item.project.name.toLowerCase().includes(q)
-  );
+
+  const base = displayItems.value.filter((item) => {
+    if (!pickedSet) return true;
+    for (const r of overviewRoleNamesForItem(item)) {
+      if (pickedSet.has(r)) return true;
+    }
+    return false;
+  });
+
+  if (!q) return base;
+  return base.filter((item) => item.project.name.toLowerCase().includes(q));
 });
 
 /** 僅在整批初始載入（loading）時禁止橫向拖曳；單專案任務載入時不鎖全表（與專案進度頁一致） */
@@ -716,19 +792,114 @@ onActivated(() => {
       <div class="page-header-toolbar">
         <div class="toolbar-left">
           <div v-if="!error" class="header-search">
-            <ProjectSortControl v-model="projectNameSortOrder" :disabled="loading" />
-          <span class="header-search-divider" role="separator" aria-hidden="true" />
-          <input
-            id="project-search-bytime-input"
-            v-model="projectSearchQuery"
-            type="search"
-            class="project-search-input"
-            aria-label="依專案名稱篩選，留空顯示全部"
-            placeholder="輸入關鍵字篩選專案名稱，留空顯示全部"
-              autocomplete="off"
-              spellcheck="false"
-              :disabled="loading"
-            />
+            <div class="header-search-scroll">
+              <ProjectSortControl v-model="projectNameSortOrder" :disabled="loading" />
+              <span class="header-search-divider" role="separator" aria-hidden="true" />
+              <div class="role-people-filter">
+                <span class="role-people-filter-label">專案角色</span>
+                <div class="role-people-filter-popover">
+                  <button
+                    type="button"
+                    class="role-people-filter-trigger"
+                    ref="rolePeopleTriggerEl"
+                    :disabled="loading || projectRoleOptions.length === 0"
+                    :aria-expanded="rolePeoplePickerOpen"
+                    :title="
+                      projectRoleOptions.length === 0
+                        ? '目前沒有可篩選的專案角色'
+                        : selectedProjectRoleNames.length > 0
+                          ? '已選 ' + selectedProjectRoleNames.length + ' 個角色'
+                          : '點擊選擇（可複選）'
+                    "
+                    @click="rolePeoplePickerOpen = !rolePeoplePickerOpen"
+                  >
+                    <span class="role-people-filter-trigger-text">
+                      {{
+                        projectRoleOptions.length === 0
+                          ? '無資料'
+                          : selectedProjectRoleNames.length > 0
+                            ? '已選 ' + selectedProjectRoleNames.length + ' 個角色'
+                            : '選擇（可複選）'
+                      }}
+                    </span>
+                    <span class="role-people-filter-trigger-caret" aria-hidden="true">
+                      {{ rolePeoplePickerOpen ? "▲" : "▼" }}
+                    </span>
+                  </button>
+
+                  <Teleport to="body">
+                    <div
+                      v-if="rolePeoplePickerOpen"
+                      class="role-people-filter-panel"
+                      role="dialog"
+                      aria-label="專案角色篩選"
+                      :style="{
+                        position: 'fixed',
+                        top: rolePeoplePanelPos.top + 'px',
+                        left: rolePeoplePanelPos.left + 'px',
+                        width: rolePeoplePanelPos.width + 'px',
+                      }"
+                    >
+                      <div class="role-people-filter-panel-actions">
+                        <button
+                          type="button"
+                          class="role-people-filter-clear"
+                          :disabled="loading || selectedProjectRoleNames.length === 0"
+                          @click="clearProjectRoleFilter"
+                        >
+                          清除
+                        </button>
+                        <button
+                          type="button"
+                          class="role-people-filter-close"
+                          :disabled="loading"
+                          @click="rolePeoplePickerOpen = false"
+                        >
+                          關閉
+                        </button>
+                      </div>
+                      <ul class="role-people-filter-list" role="listbox" aria-label="角色清單">
+                        <li
+                          v-for="r in projectRoleOptions"
+                          :key="r"
+                          class="role-people-filter-item"
+                        >
+                          <label class="role-people-filter-item-label">
+                            <input
+                              v-model="selectedProjectRoleNames"
+                              type="checkbox"
+                              class="role-people-filter-item-checkbox"
+                              :value="r"
+                            />
+                            <span class="role-people-filter-item-text">{{ r }}</span>
+                          </label>
+                        </li>
+                      </ul>
+                    </div>
+                  </Teleport>
+                </div>
+              </div>
+              <button
+                type="button"
+                class="role-people-filter-clear"
+                :disabled="loading || selectedProjectRoleNames.length === 0"
+                @click="clearProjectRoleFilter"
+              >
+                清除角色篩選
+              </button>
+              <span class="header-search-divider" role="separator" aria-hidden="true" />
+              <input
+                id="project-search-bytime-input"
+                v-model="projectSearchQuery"
+                type="search"
+                class="project-search-input"
+                aria-label="依專案名稱篩選，留空顯示全部"
+                placeholder="輸入關鍵字篩選專案名稱，留空顯示全部"
+                autocomplete="off"
+                spellcheck="false"
+                :disabled="loading"
+              />
+            </div>
           </div>
         </div>
         <div class="toolbar-right">
@@ -1489,6 +1660,8 @@ onActivated(() => {
 .toolbar-left {
   flex: 1 1 auto;
   min-width: 0;
+  display: flex;
+  justify-content: center;
 }
 .toolbar-right {
   display: flex;
@@ -1501,13 +1674,35 @@ onActivated(() => {
   min-width: 0;
 }
 .header-search {
+  width: 100%;
+  max-width: min(920px, 100%);
+  min-width: 0;
+  margin: 0 auto;
+  /* 外層不裁切，避免彈出面板被 overflow 吃掉 */
+  overflow: visible;
+}
+.header-search-scroll {
   display: flex;
   flex-direction: row;
   align-items: center;
   gap: 10px;
   min-width: 0;
   width: 100%;
-  max-width: min(600px, 100%);
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  overflow-y: visible;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-gutter: stable;
+}
+.header-search-scroll::-webkit-scrollbar {
+  height: 8px;
+}
+.header-search-scroll::-webkit-scrollbar-thumb {
+  background: rgba(17, 24, 39, 0.18);
+  border-radius: 999px;
+}
+.header-search-scroll::-webkit-scrollbar-track {
+  background: transparent;
 }
 .header-search :deep(.project-sort-btn) {
   height: 32px;
@@ -1529,9 +1724,159 @@ onActivated(() => {
   background: #d1d5db;
   align-self: center;
 }
+.role-people-filter {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  flex: 0 0 auto;
+}
+.role-people-filter-popover {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+}
+.role-people-filter-trigger {
+  height: 32px;
+  padding: 0 10px;
+  border-radius: 6px;
+  border: 1px solid #d1d5db;
+  background: #fff;
+  color: #111827;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+  max-width: min(320px, 30vw);
+}
+.role-people-filter-trigger-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.role-people-filter-trigger:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+  background: #f3f4f6;
+}
+.role-people-filter-trigger:not(:disabled):hover {
+  border-color: #c7d2fe;
+  background: #eef2ff;
+}
+.role-people-filter-trigger-caret {
+  font-size: 10px;
+  color: #6b7280;
+}
+.role-people-filter-panel {
+  /* 位置由 inline style (fixed) 控制，避免被 overflow 裁切 */
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  box-shadow: 0 12px 40px rgba(15, 23, 42, 0.16);
+  padding: 10px 10px 8px;
+  z-index: 50;
+}
+.role-people-filter-panel-actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+.role-people-filter-close {
+  height: 32px;
+  padding: 0 10px;
+  border-radius: 6px;
+  border: 1px solid #d1d5db;
+  background: #fff;
+  color: #374151;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.role-people-filter-close:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+.role-people-filter-close:not(:disabled):hover {
+  border-color: #c7d2fe;
+  background: #eef2ff;
+  color: #4f46e5;
+}
+.role-people-filter-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: min(42vh, 340px);
+  overflow: auto;
+  border-top: 1px solid #f3f4f6;
+  padding-top: 6px;
+}
+.role-people-filter-item {
+  margin: 0;
+}
+.role-people-filter-item-label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 8px;
+  border-radius: 10px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  color: #111827;
+}
+.role-people-filter-item-label:hover {
+  background: #f3f4f6;
+}
+.role-people-filter-item-checkbox {
+  width: 18px;
+  height: 18px;
+  accent-color: #4f46e5;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.role-people-filter-item-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.role-people-filter-label {
+  font-size: 12px;
+  font-weight: 700;
+  color: #374151;
+  white-space: nowrap;
+}
+.role-people-filter-clear {
+  height: 32px;
+  padding: 0 10px;
+  border-radius: 6px;
+  border: 1px solid #d1d5db;
+  background: #fff;
+  color: #374151;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+  flex: 0 0 auto;
+  min-width: 108px;
+}
+.role-people-filter-clear:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+.role-people-filter-clear:not(:disabled):hover {
+  border-color: #c7d2fe;
+  background: #eef2ff;
+  color: #4f46e5;
+}
 .header-search .project-search-input {
-  flex: 1 1 200px;
-  min-width: min(100%, 320px);
+  flex: 1 1 260px;
+  min-width: 240px;
 }
 .meta-right {
   display: flex;
@@ -1557,11 +1902,11 @@ onActivated(() => {
     flex-wrap: wrap;
     justify-content: flex-end;
   }
+  .header-search {
+    max-width: 100%;
+  }
 }
 @media (max-width: 640px) {
-  .header-search {
-    flex-wrap: wrap;
-  }
   .header-search .project-search-input {
     flex-basis: 140px;
     flex-grow: 1;
