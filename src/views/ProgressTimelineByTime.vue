@@ -15,6 +15,7 @@ import {
   type ProjectProgress,
 } from "@/composables/useProjectProgress";
 import ScrollToTopButton from "@/components/ScrollToTopButton.vue";
+import ProjectLoadProgressBanner from "@/components/ProjectLoadProgressBanner.vue";
 import ProgressStatusLegend from "@/components/ProgressStatusLegend.vue";
 import ProjectSortControl from "@/components/ProjectSortControl.vue";
 import {
@@ -935,6 +936,12 @@ onActivated(() => {
         </div>
       </div>
     </header>
+
+    <ProjectLoadProgressBanner
+      :loading="loading"
+      :items="items"
+      :hidden="!!error"
+    />
 
     <main class="page-main">
       <div
