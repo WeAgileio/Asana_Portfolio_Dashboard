@@ -13,6 +13,7 @@ import {
   useProjectProgress,
   type ProjectProgress,
 } from "@/composables/useProjectProgress";
+import { useBytimeScrollAfterReload } from "@/composables/useBytimeScrollAfterReload";
 import ScrollToTopButton from "@/components/ScrollToTopButton.vue";
 import ProjectLoadProgressBanner from "@/components/ProjectLoadProgressBanner.vue";
 import ProjectSortControl from "@/components/ProjectSortControl.vue";
@@ -32,6 +33,7 @@ const {
   selectedProjectGids,
   projectPickerOpen,
   loadProgress,
+  loadIdRef,
   todayLabel,
   projectBillingTotal,
   projectBillingCollectedTotal,
@@ -83,11 +85,14 @@ const bytimeScrollSyncing = ref(false);
 /** 拖曳橫向捲動時為 true，用於避免誤觸開啟 section 詳情 */
 const bytimeDragMoved = ref(false);
 
+let markUserHorizontalScroll: () => void = () => {};
+
 function onBytimeHeadScroll() {
   if (bytimeScrollSyncing.value) return;
   const h = bytimeHeadScrollEl.value;
   const b = bytimeBodyScrollEl.value;
   if (!h || !b) return;
+  markUserHorizontalScroll();
   bytimeScrollSyncing.value = true;
   b.scrollLeft = h.scrollLeft;
   requestAnimationFrame(() => {
@@ -100,6 +105,7 @@ function onBytimeBodyScroll() {
   const h = bytimeHeadScrollEl.value;
   const b = bytimeBodyScrollEl.value;
   if (!h || !b) return;
+  markUserHorizontalScroll();
   bytimeScrollSyncing.value = true;
   h.scrollLeft = b.scrollLeft;
   requestAnimationFrame(() => {
@@ -121,6 +127,7 @@ function onBytimeTableDocumentMove(event: MouseEvent) {
   const dx = event.clientX - bytimeDragStartX.value;
   if (Math.abs(dx) > 3) {
     bytimeDragMoved.value = true;
+    markUserHorizontalScroll();
   }
   const next = bytimeDragScrollLeft.value - dx;
   bytimeScrollSyncing.value = true;
@@ -503,9 +510,6 @@ const unschedColumnExpanded = computed(
   () => unschedExpandedProjectGid.value !== null
 );
 
-/** 重新載入完成後將橫向捲動對齊「目前月份」欄 */
-const scrollAfterReloadToCurrentMonth = ref(false);
-
 function scrollBytimeToCurrentMonthColumn() {
   const h = bytimeHeadScrollEl.value;
   const b = bytimeBodyScrollEl.value;
@@ -535,55 +539,39 @@ function scrollBytimeToCurrentMonthColumn() {
   return true;
 }
 
+const {
+  markUserHorizontalScroll: markUserHorizontalScrollImpl,
+  beginBatchReload,
+  setupScrollAfterReloadWatch,
+} = useBytimeScrollAfterReload({
+  headScrollEl: bytimeHeadScrollEl,
+  bodyScrollEl: bytimeBodyScrollEl,
+  scrollSyncing: bytimeScrollSyncing,
+  scrollToCurrentMonth: scrollBytimeToCurrentMonthColumn,
+  isLoadDone: () =>
+    loadIdRef.value > 0 &&
+    !loading.value &&
+    !anyProjectLoadingTasks.value,
+  monthColumnCount: () => monthColumns.value.length,
+  isTableVisible: () =>
+    items.value.length > 0 &&
+    !(
+      projectSearchQuery.value.trim() !== "" &&
+      filteredDisplayItems.value.length === 0
+    ),
+  itemCount: () => items.value.length,
+});
+markUserHorizontalScroll = markUserHorizontalScrollImpl;
+
+setupScrollAfterReloadWatch();
+
 function beginReloadAndScrollToCurrentMonth() {
-  scrollAfterReloadToCurrentMonth.value = true;
-  void loadProgress();
+  beginBatchReload(() => loadProgress());
 }
 
 function beginResyncAndScrollToCurrentMonth() {
-  scrollAfterReloadToCurrentMonth.value = true;
-  void loadProgress({ bypassProxyCache: true });
+  beginBatchReload(() => loadProgress({ bypassProxyCache: true }));
 }
-
-function tryScrollToCurrentMonthAfterDataReady(retries = 8) {
-  nextTick(() => {
-    requestAnimationFrame(() => {
-      const ok = scrollBytimeToCurrentMonthColumn();
-      if (ok) {
-        scrollAfterReloadToCurrentMonth.value = false;
-        return;
-      }
-      if (retries <= 0) return;
-      setTimeout(() => {
-        tryScrollToCurrentMonthAfterDataReady(retries - 1);
-      }, 60);
-    });
-  });
-}
-
-watch(
-  () => ({
-    pending: scrollAfterReloadToCurrentMonth.value,
-    done: !loading.value && !anyProjectLoadingTasks.value,
-    n: monthColumns.value.length,
-    showTable:
-      items.value.length > 0 &&
-      !(
-        projectSearchQuery.value.trim() !== "" &&
-        filteredDisplayItems.value.length === 0
-      ),
-  }),
-  (s) => {
-    if (!s.pending || !s.done) return;
-    if (!s.showTable || s.n === 0) {
-      scrollAfterReloadToCurrentMonth.value = false;
-      return;
-    }
-    // 僅在整批資料載完後才滾動，並在 DOM 尚未就緒時短暫重試
-    tryScrollToCurrentMonthAfterDataReady();
-  },
-  { flush: "post" }
-);
 
 const totalUnscheduledCount = computed(() => {
   let n = 0;
@@ -634,9 +622,7 @@ watch(filteredDisplayItems, (items) => {
 });
 
 onMounted(() => {
-  // 首次刷新進頁也要在資料載完後對齊當月欄
-  scrollAfterReloadToCurrentMonth.value = true;
-  void bootstrapFromStorage();
+  beginBatchReload(() => bootstrapFromStorage());
 });
 
 onActivated(() => {
