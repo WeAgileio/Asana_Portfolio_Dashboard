@@ -17,6 +17,8 @@ export type SectionProgress = {
   completionRate: number;
   status: "not-started" | "in-progress" | "done" | "behind" | "at-risk";
   latestMilestoneDueOn: string | null;
+  /** 時間序月欄歸位與卡片「截止日期」展示用（含無 milestone 時的 task due fallback） */
+  sectionDisplayDueOn: string | null;
   billingTotal: number;
   billingCollectedTotal: number;
   tasks: AsanaTask[];
@@ -62,6 +64,28 @@ function isDueWithinTwoWeeks(dueDateStr: string): boolean {
   const twoWeeksLater = new Date(today);
   twoWeeksLater.setDate(twoWeeksLater.getDate() + 14);
   return due >= today && due <= twoWeeksLater;
+}
+
+function taskDueOnStrings(tasks: AsanaTask[]): string[] {
+  return tasks
+    .filter((t) => typeof t.due_on === "string" && t.due_on !== "")
+    .map((t) => t.due_on as string);
+}
+
+/** 時間序展示截止日：有未完成取最早 due；全完成取最晚 due；否則 null */
+function resolveSectionDisplayDueOn(tasks: AsanaTask[]): string | null {
+  const incomplete = tasks.filter((t) => !t.completed);
+  if (incomplete.length > 0) {
+    const dues = taskDueOnStrings(incomplete);
+    if (dues.length === 0) return null;
+    dues.sort();
+    return dues[0] ?? null;
+  }
+
+  const dues = taskDueOnStrings(tasks);
+  if (dues.length === 0) return null;
+  dues.sort();
+  return dues[dues.length - 1] ?? null;
 }
 
 function calcSectionProgress(
@@ -140,6 +164,8 @@ function calcSectionProgress(
     status = "at-risk";
   }
 
+  const sectionDisplayDueOn = resolveSectionDisplayDueOn(tasks);
+
   return {
     section,
     totalTasks,
@@ -147,6 +173,7 @@ function calcSectionProgress(
     completionRate,
     status,
     latestMilestoneDueOn,
+    sectionDisplayDueOn,
     billingTotal,
     billingCollectedTotal,
     tasks,

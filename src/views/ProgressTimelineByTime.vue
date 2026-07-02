@@ -17,6 +17,7 @@ import {
 import { useBytimeScrollAfterReload } from "@/composables/useBytimeScrollAfterReload";
 import ScrollToTopButton from "@/components/ScrollToTopButton.vue";
 import ProjectLoadProgressBanner from "@/components/ProjectLoadProgressBanner.vue";
+import PageToolbar from "@/components/PageToolbar.vue";
 import ProgressStatusLegend from "@/components/ProgressStatusLegend.vue";
 import ProjectSortControl from "@/components/ProjectSortControl.vue";
 import {
@@ -323,9 +324,9 @@ function enumerateMonths(from: Ym, to: Ym): MonthColumn[] {
   return out;
 }
 
-function milestoneTimeMs(sp: SectionProgress): number {
-  if (!sp.latestMilestoneDueOn) return Number.POSITIVE_INFINITY;
-  const t = new Date(sp.latestMilestoneDueOn).getTime();
+function sectionDisplayTimeMs(sp: SectionProgress): number {
+  if (!sp.sectionDisplayDueOn) return Number.POSITIVE_INFINITY;
+  const t = new Date(sp.sectionDisplayDueOn).getTime();
   return Number.isNaN(t) ? Number.POSITIVE_INFINITY : t;
 }
 
@@ -344,8 +345,8 @@ const monthColumns = computed((): MonthColumn[] => {
   const bounds: Ym[] = [];
   for (const item of searchFilteredDisplayItems.value) {
     for (const sp of item.sections) {
-      if (!sp.latestMilestoneDueOn) continue;
-      const ym = parseDueToYm(sp.latestMilestoneDueOn);
+      if (!sp.sectionDisplayDueOn) continue;
+      const ym = parseDueToYm(sp.sectionDisplayDueOn);
       if (ym) bounds.push(ym);
     }
   }
@@ -389,7 +390,7 @@ function buildBucketMap(item: ProjectProgress): Map<string, SectionProgress[]> {
       map.get(UNSCHEDULED_KEY)!.push(sp);
       continue;
     }
-    const due = sp.latestMilestoneDueOn;
+    const due = sp.sectionDisplayDueOn;
     if (!due) {
       map.get(UNSCHEDULED_KEY)!.push(sp);
       continue;
@@ -405,7 +406,7 @@ function buildBucketMap(item: ProjectProgress): Map<string, SectionProgress[]> {
 
   for (const arr of map.values()) {
     arr.sort((a, b) => {
-      const dueDiff = milestoneTimeMs(a) - milestoneTimeMs(b);
+      const dueDiff = sectionDisplayTimeMs(a) - sectionDisplayTimeMs(b);
       if (dueDiff !== 0) return dueDiff;
       const ca = sectionLatestTaskCreatedMs(a);
       const cb = sectionLatestTaskCreatedMs(b);
@@ -435,7 +436,7 @@ function sectionsInCell(
 
 /**
  * 點月欄後，該月有 section 的專案列：延後(紅) > 風險(黃) > 其餘；
- * 同層再依該月欄內「里程碑截止日」越早越上。
+ * 同層再依該月欄內「展示截止日」越早越上。
  */
 function monthColumnSortKeyForItem(
   item: ProjectProgress,
@@ -454,8 +455,8 @@ function monthColumnSortKeyForItem(
 
   let earliestDueMs = Infinity;
   for (const s of sections) {
-    if (!s.latestMilestoneDueOn) continue;
-    const ms = new Date(s.latestMilestoneDueOn).getTime();
+    if (!s.sectionDisplayDueOn) continue;
+    const ms = new Date(s.sectionDisplayDueOn).getTime();
     if (Number.isFinite(ms) && ms < earliestDueMs) earliestDueMs = ms;
   }
   return { has: true, tier, earliestDueMs };
@@ -632,10 +633,10 @@ watch(monthColumns, (cols) => {
   if (!cols.some((c) => c.key === k)) prioritizeMonthKey.value = null;
 });
 
-/** 卡片外顯示：里程碑最晚截止日（與格內排序依據一致） */
+/** 卡片外顯示：section 展示截止日（與格內排序依據一致） */
 function formatSectionDueOnDisplay(sp: SectionProgress): string {
-  if (!sp.latestMilestoneDueOn) return "—";
-  return new Date(sp.latestMilestoneDueOn).toLocaleDateString("zh-TW", {
+  if (!sp.sectionDisplayDueOn) return "—";
+  return new Date(sp.sectionDisplayDueOn).toLocaleDateString("zh-TW", {
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
@@ -776,153 +777,129 @@ onActivated(() => {
 
 <template>
   <div class="progress-page">
-    <header class="page-header">
-      <div class="page-header-toolbar">
-        <div class="toolbar-left">
-          <div v-if="!error" class="header-search">
-            <div class="header-search-scroll">
-              <ProjectSortControl v-model="projectNameSortOrder" :disabled="loading" />
-              <span class="header-search-divider" role="separator" aria-hidden="true" />
-              <div class="role-people-filter">
-                <span class="role-people-filter-label">專案角色</span>
-                <div class="role-people-filter-popover">
+    <PageToolbar
+      :loading="loading"
+      :date-label="todayLabel()"
+      :projects-options-loading="projectsOptionsLoading"
+      @resync="beginResyncAndScrollToCurrentMonth"
+      @reload="beginReloadAndScrollToCurrentMonth"
+      @open-project-picker="projectPickerOpen = true"
+      @hide="rolePeoplePickerOpen = false"
+    >
+      <template v-if="!error" #filters-inline>
+        <ProjectSortControl v-model="projectNameSortOrder" :disabled="loading" />
+      </template>
+      <template v-if="!error" #role-filter>
+        <div class="role-people-filter">
+          <span class="role-people-filter-label">專案角色</span>
+          <div class="role-people-filter-popover">
+            <button
+              type="button"
+              class="role-people-filter-trigger"
+              ref="rolePeopleTriggerEl"
+              :disabled="loading || projectRoleOptions.length === 0"
+              :aria-expanded="rolePeoplePickerOpen"
+              :title="
+                projectRoleOptions.length === 0
+                  ? '目前沒有可篩選的專案角色'
+                  : selectedProjectRoleNames.length > 0
+                    ? '已選 ' + selectedProjectRoleNames.length + ' 個角色'
+                    : '點擊選擇（可複選）'
+              "
+              @click="rolePeoplePickerOpen = !rolePeoplePickerOpen"
+            >
+              <span class="role-people-filter-trigger-text">
+                {{
+                  projectRoleOptions.length === 0
+                    ? '無資料'
+                    : selectedProjectRoleNames.length > 0
+                      ? '已選 ' + selectedProjectRoleNames.length + ' 個角色'
+                      : '選擇（可複選）'
+                }}
+              </span>
+              <span class="role-people-filter-trigger-caret" aria-hidden="true">
+                {{ rolePeoplePickerOpen ? "▲" : "▼" }}
+              </span>
+            </button>
+
+            <Teleport to="body">
+              <div
+                v-if="rolePeoplePickerOpen"
+                class="role-people-filter-panel"
+                role="dialog"
+                aria-label="專案角色篩選"
+                :style="{
+                  position: 'fixed',
+                  top: rolePeoplePanelPos.top + 'px',
+                  left: rolePeoplePanelPos.left + 'px',
+                  width: rolePeoplePanelPos.width + 'px',
+                }"
+              >
+                <div class="role-people-filter-panel-actions">
                   <button
                     type="button"
-                    class="role-people-filter-trigger"
-                    ref="rolePeopleTriggerEl"
-                    :disabled="loading || projectRoleOptions.length === 0"
-                    :aria-expanded="rolePeoplePickerOpen"
-                    :title="
-                      projectRoleOptions.length === 0
-                        ? '目前沒有可篩選的專案角色'
-                        : selectedProjectRoleNames.length > 0
-                          ? '已選 ' + selectedProjectRoleNames.length + ' 個角色'
-                          : '點擊選擇（可複選）'
-                    "
-                    @click="rolePeoplePickerOpen = !rolePeoplePickerOpen"
+                    class="role-people-filter-clear"
+                    :disabled="loading || selectedProjectRoleNames.length === 0"
+                    @click="clearProjectRoleFilter"
                   >
-                    <span class="role-people-filter-trigger-text">
-                      {{
-                        projectRoleOptions.length === 0
-                          ? '無資料'
-                          : selectedProjectRoleNames.length > 0
-                            ? '已選 ' + selectedProjectRoleNames.length + ' 個角色'
-                            : '選擇（可複選）'
-                      }}
-                    </span>
-                    <span class="role-people-filter-trigger-caret" aria-hidden="true">
-                      {{ rolePeoplePickerOpen ? "▲" : "▼" }}
-                    </span>
+                    清除
                   </button>
-
-                  <Teleport to="body">
-                    <div
-                      v-if="rolePeoplePickerOpen"
-                      class="role-people-filter-panel"
-                      role="dialog"
-                      aria-label="專案角色篩選"
-                      :style="{
-                        position: 'fixed',
-                        top: rolePeoplePanelPos.top + 'px',
-                        left: rolePeoplePanelPos.left + 'px',
-                        width: rolePeoplePanelPos.width + 'px',
-                      }"
-                    >
-                      <div class="role-people-filter-panel-actions">
-                        <button
-                          type="button"
-                          class="role-people-filter-clear"
-                          :disabled="loading || selectedProjectRoleNames.length === 0"
-                          @click="clearProjectRoleFilter"
-                        >
-                          清除
-                        </button>
-                        <button
-                          type="button"
-                          class="role-people-filter-close"
-                          :disabled="loading"
-                          @click="rolePeoplePickerOpen = false"
-                        >
-                          關閉
-                        </button>
-                      </div>
-                      <ul class="role-people-filter-list" role="listbox" aria-label="角色清單">
-                        <li
-                          v-for="r in projectRoleOptions"
-                          :key="r"
-                          class="role-people-filter-item"
-                        >
-                          <label class="role-people-filter-item-label">
-                            <input
-                              v-model="selectedProjectRoleNames"
-                              type="checkbox"
-                              class="role-people-filter-item-checkbox"
-                              :value="r"
-                            />
-                            <span class="role-people-filter-item-text">{{ r }}</span>
-                          </label>
-                        </li>
-                      </ul>
-                    </div>
-                  </Teleport>
+                  <button
+                    type="button"
+                    class="role-people-filter-close"
+                    :disabled="loading"
+                    @click="rolePeoplePickerOpen = false"
+                  >
+                    關閉
+                  </button>
                 </div>
+                <ul class="role-people-filter-list" role="listbox" aria-label="角色清單">
+                  <li
+                    v-for="r in projectRoleOptions"
+                    :key="r"
+                    class="role-people-filter-item"
+                  >
+                    <label class="role-people-filter-item-label">
+                      <input
+                        v-model="selectedProjectRoleNames"
+                        type="checkbox"
+                        class="role-people-filter-item-checkbox"
+                        :value="r"
+                      />
+                      <span class="role-people-filter-item-text">{{ r }}</span>
+                    </label>
+                  </li>
+                </ul>
               </div>
-              <button
-                type="button"
-                class="role-people-filter-clear"
-                :disabled="loading || selectedProjectRoleNames.length === 0"
-                @click="clearProjectRoleFilter"
-              >
-                清除角色篩選
-              </button>
-              <span class="header-search-divider" role="separator" aria-hidden="true" />
-              <input
-                id="project-search-bytime-input"
-                v-model="projectSearchQuery"
-                type="search"
-                class="project-search-input"
-                aria-label="依專案名稱篩選，留空顯示全部"
-                placeholder="輸入關鍵字篩選專案名稱，留空顯示全部"
-                autocomplete="off"
-                spellcheck="false"
-                :disabled="loading"
-              />
-            </div>
+            </Teleport>
           </div>
         </div>
-        <div class="toolbar-right">
-          <ProgressStatusLegend />
-          <div class="meta-right">
-            <div class="date-label">日期：{{ todayLabel() }}</div>
-            <button
-              type="button"
-              class="reload-btn"
-              :disabled="loading"
-              @click="beginReloadAndScrollToCurrentMonth"
-            >
-              {{ loading ? "載入中…" : "重新載入" }}
-            </button>
-            <button
-              type="button"
-              class="resync-btn"
-              :disabled="loading"
-              title="略過伺服器快取，向 Asana 重新拉取最新資料"
-              @click="beginResyncAndScrollToCurrentMonth"
-            >
-              {{ loading ? "載入中…" : "重新同步數據" }}
-            </button>
-            <button
-              type="button"
-              class="secondary-btn"
-              :disabled="projectsOptionsLoading || loading"
-              @click="projectPickerOpen = true"
-            >
-              選擇專案
-            </button>
-          </div>
-        </div>
-      </div>
-    </header>
+        <button
+          type="button"
+          class="role-people-filter-clear"
+          :disabled="loading || selectedProjectRoleNames.length === 0"
+          @click="clearProjectRoleFilter"
+        >
+          清除角色篩選
+        </button>
+      </template>
+      <template v-if="!error" #search>
+        <input
+          id="project-search-bytime-input"
+          v-model="projectSearchQuery"
+          type="search"
+          class="project-search-input"
+          aria-label="依專案名稱篩選，留空顯示全部"
+          placeholder="輸入關鍵字篩選專案名稱，留空顯示全部"
+          autocomplete="off"
+          spellcheck="false"
+          :disabled="loading"
+        />
+      </template>
+      <template #legend>
+        <ProgressStatusLegend />
+      </template>
+    </PageToolbar>
 
     <ProjectLoadProgressBanner
       :loading="loading"
@@ -1636,88 +1613,6 @@ onActivated(() => {
   display: flex;
   flex-direction: column;
 }
-.page-header {
-  box-sizing: border-box;
-  padding: 10px 20px;
-  background: #fff;
-  border-bottom: 1px solid #e5e7eb;
-}
-.page-header-toolbar {
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  justify-content: space-between;
-  width: 100%;
-  gap: 12px 16px;
-  flex-wrap: wrap;
-}
-.toolbar-left {
-  flex: 1 1 auto;
-  min-width: 0;
-  display: flex;
-  justify-content: center;
-}
-.toolbar-right {
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  gap: 12px 20px;
-  flex: 0 1 auto;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  min-width: 0;
-}
-.header-search {
-  width: 100%;
-  max-width: min(920px, 100%);
-  min-width: 0;
-  margin: 0 auto;
-  /* 外層不裁切，避免彈出面板被 overflow 吃掉 */
-  overflow: visible;
-}
-.header-search-scroll {
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  gap: 10px;
-  min-width: 0;
-  width: 100%;
-  flex-wrap: nowrap;
-  overflow-x: auto;
-  overflow-y: visible;
-  -webkit-overflow-scrolling: touch;
-  scrollbar-gutter: stable;
-}
-.header-search-scroll::-webkit-scrollbar {
-  height: 8px;
-}
-.header-search-scroll::-webkit-scrollbar-thumb {
-  background: rgba(17, 24, 39, 0.18);
-  border-radius: 999px;
-}
-.header-search-scroll::-webkit-scrollbar-track {
-  background: transparent;
-}
-.header-search :deep(.project-sort-btn) {
-  height: 32px;
-  padding: 0 10px;
-  font-size: 12px;
-  border-radius: 6px;
-}
-.header-search :deep(.project-sort-glyph--default) {
-  font-size: 13px;
-}
-.header-search :deep(.project-sort-glyph--asc),
-.header-search :deep(.project-sort-glyph--desc) {
-  font-size: 10px;
-}
-.header-search-divider {
-  width: 1px;
-  height: 20px;
-  flex-shrink: 0;
-  background: #d1d5db;
-  align-self: center;
-}
 .role-people-filter {
   display: inline-flex;
   align-items: center;
@@ -1867,120 +1762,6 @@ onActivated(() => {
   border-color: #c7d2fe;
   background: #eef2ff;
   color: #4f46e5;
-}
-.header-search .project-search-input {
-  flex: 1 1 260px;
-  min-width: 240px;
-}
-.meta-right {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-shrink: 0;
-}
-@media (max-width: 1199px) {
-  .page-header {
-    padding: 10px 16px;
-  }
-}
-@media (max-width: 900px) {
-  .page-header-toolbar {
-    flex-direction: column;
-    align-items: stretch;
-  }
-  .toolbar-right {
-    justify-content: space-between;
-    width: 100%;
-  }
-  .meta-right {
-    flex-wrap: wrap;
-    justify-content: flex-end;
-  }
-  .header-search {
-    max-width: 100%;
-  }
-}
-@media (max-width: 640px) {
-  .header-search .project-search-input {
-    flex-basis: 140px;
-    flex-grow: 1;
-    min-width: 0;
-  }
-  .meta-right {
-    justify-content: flex-start;
-  }
-}
-.project-search-input {
-  flex: 1;
-  min-width: 0;
-  height: 32px;
-  padding: 0 10px;
-  border: 1px solid #d1d5db;
-  border-radius: 6px;
-  font-size: 12px;
-  color: #111827;
-  background: #fff;
-}
-.project-search-input::placeholder {
-  color: #9ca3af;
-}
-.project-search-input:focus {
-  outline: none;
-  border-color: #6366f1;
-  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.2);
-}
-.project-search-input:disabled {
-  opacity: 0.65;
-  cursor: not-allowed;
-  background: #f3f4f6;
-}
-.date-label {
-  font-size: 12px;
-  color: #4b5563;
-  white-space: nowrap;
-}
-.reload-btn {
-  height: 30px;
-  padding: 0 10px;
-  border-radius: 6px;
-  border: none;
-  background: #4f46e5;
-  color: #fff;
-  font-size: 12px;
-  font-weight: 600;
-  cursor: pointer;
-}
-.reload-btn:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-.reload-btn:not(:disabled):hover {
-  background: #4338ca;
-}
-.resync-btn {
-  height: 30px;
-  padding: 0 10px;
-  border-radius: 6px;
-  border: 1px solid #0d9488;
-  background: #fff;
-  color: #0f766e;
-  font-size: 12px;
-  font-weight: 600;
-  cursor: pointer;
-}
-.resync-btn:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-.resync-btn:not(:disabled):hover {
-  background: #f0fdfa;
-  border-color: #0f766e;
-}
-.page-header .secondary-btn {
-  height: 30px;
-  padding: 0 10px;
-  border-radius: 6px;
-  font-weight: 600;
 }
 .page-main {
   flex: 1;

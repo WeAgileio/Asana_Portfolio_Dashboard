@@ -7,6 +7,7 @@ import {
 } from "@/composables/useProjectProgress";
 import ScrollToTopButton from "@/components/ScrollToTopButton.vue";
 import ProjectLoadProgressBanner from "@/components/ProjectLoadProgressBanner.vue";
+import PageToolbar from "@/components/PageToolbar.vue";
 import ProjectSortControl from "@/components/ProjectSortControl.vue";
 import {
   applyProjectNameSort,
@@ -141,69 +142,41 @@ const billingRows = computed(() => {
 
 <template>
   <div class="progress-page">
-    <header class="page-header">
-      <div class="page-header-toolbar">
-        <div class="toolbar-left">
-          <div v-if="!error" class="header-search">
-            <ProjectSortControl v-model="projectNameSortOrder" :disabled="loading" />
-            <span
-              class="header-search-divider"
-              role="separator"
-              aria-hidden="true"
-            />
-            <input
-              id="billing-project-search-input"
-              v-model="projectSearchQuery"
-              type="search"
-              class="project-search-input"
-              aria-label="依專案名稱篩選，留空顯示全部"
-              placeholder="輸入關鍵字篩選專案名稱，留空顯示全部"
-              autocomplete="off"
-              spellcheck="false"
-              :disabled="loading"
-            />
-          </div>
+    <PageToolbar
+      :loading="loading"
+      :date-label="todayLabel()"
+      :projects-options-loading="projectsOptionsLoading"
+      @resync="loadProgress({ bypassProxyCache: true })"
+      @reload="loadProgress()"
+      @open-project-picker="projectPickerOpen = true"
+    >
+      <template v-if="!error" #filters-inline>
+        <ProjectSortControl v-model="projectNameSortOrder" :disabled="loading" />
+      </template>
+      <template v-if="!error" #search>
+        <input
+          id="billing-project-search-input"
+          v-model="projectSearchQuery"
+          type="search"
+          class="project-search-input"
+          aria-label="依專案名稱篩選，留空顯示全部"
+          placeholder="輸入關鍵字篩選專案名稱，留空顯示全部"
+          autocomplete="off"
+          spellcheck="false"
+          :disabled="loading"
+        />
+      </template>
+      <template #legend>
+        <div class="billing-legend" aria-label="完成狀態說明">
+          <span class="legend-item"
+            ><span class="legend-dot legend-done" />已完成</span
+          >
+          <span class="legend-item"
+            ><span class="legend-dot legend-open" />未完成</span
+          >
         </div>
-        <div class="toolbar-right">
-          <div class="billing-legend" aria-label="完成狀態說明">
-            <span class="legend-item"
-              ><span class="legend-dot legend-done" />已完成</span
-            >
-            <span class="legend-item"
-              ><span class="legend-dot legend-open" />未完成</span
-            >
-          </div>
-          <div class="meta-right">
-            <div class="date-label">日期：{{ todayLabel() }}</div>
-            <button
-              type="button"
-              class="reload-btn"
-              :disabled="loading"
-              @click="loadProgress()"
-            >
-              {{ loading ? "載入中…" : "重新載入" }}
-            </button>
-            <button
-              type="button"
-              class="resync-btn"
-              :disabled="loading"
-              title="略過伺服器快取，向 Asana 重新拉取最新資料"
-              @click="loadProgress({ bypassProxyCache: true })"
-            >
-              {{ loading ? "載入中…" : "重新同步數據" }}
-            </button>
-            <button
-              type="button"
-              class="secondary-btn"
-              :disabled="projectsOptionsLoading || loading"
-              @click="projectPickerOpen = true"
-            >
-              選擇專案
-            </button>
-          </div>
-        </div>
-      </div>
-    </header>
+      </template>
+    </PageToolbar>
 
     <ProjectLoadProgressBanner
       :loading="loading"
@@ -515,35 +488,6 @@ const billingRows = computed(() => {
   display: flex;
   flex-direction: column;
 }
-.page-header {
-  box-sizing: border-box;
-  padding: 10px 20px;
-  background: #fff;
-  border-bottom: 1px solid #e5e7eb;
-}
-.page-header-toolbar {
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  justify-content: space-between;
-  width: 100%;
-  gap: 12px 16px;
-  flex-wrap: wrap;
-}
-.toolbar-left {
-  flex: 1 1 auto;
-  min-width: 0;
-}
-.toolbar-right {
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  gap: 12px 20px;
-  flex: 0 1 auto;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  min-width: 0;
-}
 .billing-legend {
   display: flex;
   align-items: center;
@@ -568,152 +512,9 @@ const billingRows = computed(() => {
 .legend-open {
   background: #60a5fa;
 }
-.header-search {
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  gap: 10px;
-  min-width: 0;
-  width: 100%;
-  max-width: min(600px, 100%);
-}
-.header-search :deep(.project-sort-btn) {
-  height: 32px;
-  padding: 0 10px;
-  font-size: 12px;
-  border-radius: 6px;
-}
-.header-search :deep(.project-sort-glyph--default) {
-  font-size: 13px;
-}
-.header-search :deep(.project-sort-glyph--asc),
-.header-search :deep(.project-sort-glyph--desc) {
-  font-size: 10px;
-}
-.header-search-divider {
-  width: 1px;
-  height: 20px;
-  flex-shrink: 0;
-  background: #d1d5db;
-  align-self: center;
-}
-.header-search .project-search-input {
-  flex: 1 1 200px;
-  min-width: min(100%, 320px);
-}
-.meta-right {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-shrink: 0;
-}
-@media (max-width: 1199px) {
-  .page-header {
-    padding: 10px 16px;
-  }
-}
-@media (max-width: 900px) {
-  .page-header-toolbar {
-    flex-direction: column;
-    align-items: stretch;
-  }
-  .toolbar-right {
-    justify-content: space-between;
-    width: 100%;
-  }
-  .meta-right {
-    flex-wrap: wrap;
-    justify-content: flex-end;
-  }
-}
-@media (max-width: 640px) {
-  .header-search {
-    flex-wrap: wrap;
-  }
-  .header-search .project-search-input {
-    flex-basis: 140px;
-    flex-grow: 1;
-    min-width: 0;
-  }
-  .meta-right {
-    justify-content: flex-start;
-  }
-}
-.date-label {
-  font-size: 12px;
-  color: #4b5563;
-  white-space: nowrap;
-}
-.reload-btn {
-  height: 30px;
-  padding: 0 10px;
-  border-radius: 6px;
-  border: none;
-  background: #4f46e5;
-  color: #fff;
-  font-size: 12px;
-  font-weight: 600;
-  cursor: pointer;
-}
-.reload-btn:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-.reload-btn:not(:disabled):hover {
-  background: #4338ca;
-}
-.resync-btn {
-  height: 30px;
-  padding: 0 10px;
-  border-radius: 6px;
-  border: 1px solid #0d9488;
-  background: #fff;
-  color: #0f766e;
-  font-size: 12px;
-  font-weight: 600;
-  cursor: pointer;
-}
-.resync-btn:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-.resync-btn:not(:disabled):hover {
-  background: #f0fdfa;
-  border-color: #0f766e;
-}
-.page-header .secondary-btn {
-  height: 30px;
-  padding: 0 10px;
-  border-radius: 6px;
-  font-weight: 600;
-}
 .page-main {
   flex: 1;
   padding: 20px 24px 32px;
-}
-.project-search-input {
-  flex: 1;
-  min-width: 0;
-  height: 32px;
-  padding: 0 10px;
-  border: 1px solid #d1d5db;
-  border-radius: 6px;
-  font-size: 12px;
-  color: #111827;
-  background: #fff;
-}
-.project-search-input::placeholder {
-  color: #9ca3af;
-}
-.project-search-input:focus {
-  outline: none;
-  border-color: #6366f1;
-  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.2);
-}
-.project-search-input:disabled {
-  opacity: 0.65;
-  cursor: not-allowed;
-  background: #f3f4f6;
 }
 .state {
   padding: 40px 0;
