@@ -18,6 +18,7 @@ import { useBytimeScrollAfterReload } from "@/composables/useBytimeScrollAfterRe
 import ScrollToTopButton from "@/components/ScrollToTopButton.vue";
 import ProjectLoadProgressBanner from "@/components/ProjectLoadProgressBanner.vue";
 import PageToolbar from "@/components/PageToolbar.vue";
+import ProjectPickerPanel from "@/components/ProjectPickerPanel.vue";
 import ProgressStatusLegend from "@/components/ProgressStatusLegend.vue";
 import ProjectSortControl from "@/components/ProjectSortControl.vue";
 import {
@@ -908,68 +909,14 @@ onActivated(() => {
     />
 
     <main class="page-main">
-      <div
-        v-if="projectPickerOpen"
-        class="selected-overlay"
-        @click.self="projectPickerOpen = false"
-      >
-        <section class="selected-panel project-picker-panel">
-          <header class="selected-header">
-            <div class="selected-title">選擇要載入的專案</div>
-            <div class="selected-range">
-              選擇 1 個以上才會只載入部分；不選則載入全部
-            </div>
-          </header>
-
-          <div class="picker-body">
-            <div v-if="projectsOptionsLoading" class="state loading">
-              正在載入專案清單…
-            </div>
-
-            <div v-else class="picker-checkboxes-wrap">
-              <ul class="project-checkbox-list" role="listbox" aria-label="專案清單">
-                <li
-                  v-for="p in projectsOptions"
-                  :key="p.gid"
-                  class="project-checkbox-item"
-                >
-                  <label class="project-checkbox-label">
-                    <input
-                      v-model="selectedProjectGids"
-                      type="checkbox"
-                      class="project-checkbox-input"
-                      :value="p.gid"
-                    />
-                    <span class="project-checkbox-text">{{ p.name }}</span>
-                  </label>
-                </li>
-              </ul>
-
-              <div class="picker-actions">
-                <button
-                  type="button"
-                  class="secondary-btn"
-                  :disabled="loading"
-                  @click="selectedProjectGids = []"
-                >
-                  載入全部
-                </button>
-                <button
-                  type="button"
-                  class="reload-btn"
-                  :disabled="loading"
-                  @click="
-                    projectPickerOpen = false;
-                    beginReloadAndScrollToCurrentMonth();
-                  "
-                >
-                  {{ loading ? "載入中…" : "套用選擇" }}
-                </button>
-              </div>
-            </div>
-          </div>
-        </section>
-      </div>
+      <ProjectPickerPanel
+        v-model:open="projectPickerOpen"
+        v-model:selected-gids="selectedProjectGids"
+        :projects="projectsOptions"
+        :loading="loading"
+        :projects-loading="projectsOptionsLoading"
+        @apply="beginReloadAndScrollToCurrentMonth()"
+      />
 
       <div v-if="error" class="state error">
         {{ error }}
@@ -2550,26 +2497,6 @@ onActivated(() => {
   max-height: calc(100vh - 120px);
   overflow-y: auto;
 }
-.selected-panel.project-picker-panel {
-  width: min(960px, calc(100vw - 48px));
-  max-height: min(88vh, 820px);
-  padding: 20px 22px;
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
-}
-.selected-panel.project-picker-panel .selected-header {
-  margin-bottom: 12px;
-  flex-shrink: 0;
-}
-.selected-panel.project-picker-panel .selected-title {
-  font-size: 17px;
-}
-.selected-panel.project-picker-panel .selected-range {
-  font-size: 13px;
-  color: #6b7280;
-  margin-top: 4px;
-}
 .selected-header {
   display: flex;
   flex-direction: column;
@@ -2580,90 +2507,6 @@ onActivated(() => {
   font-size: 14px;
   font-weight: 700;
   color: #111827;
-}
-.picker-body {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-  flex: 1;
-  min-height: 0;
-}
-.picker-checkboxes-wrap {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-  flex: 1;
-  min-height: 0;
-}
-.project-checkbox-list {
-  list-style: none;
-  margin: 0;
-  padding: 4px;
-  border: 1px solid #e5e7eb;
-  border-radius: 12px;
-  background: #f9fafb;
-  max-height: min(58vh, 520px);
-  overflow-y: auto;
-  flex: 1;
-  min-height: 280px;
-}
-.project-checkbox-item {
-  margin: 0;
-}
-.project-checkbox-label {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  padding: 14px 16px;
-  margin: 4px;
-  border-radius: 10px;
-  cursor: pointer;
-  font-size: 15px;
-  font-weight: 600;
-  color: #111827;
-  background: #fff;
-  border: 1px solid transparent;
-  transition: background 0.12s ease, border-color 0.12s ease;
-}
-.project-checkbox-label:hover {
-  background: #f3f4f6;
-  border-color: #e5e7eb;
-}
-.project-checkbox-input {
-  width: 20px;
-  height: 20px;
-  flex-shrink: 0;
-  accent-color: #4f46e5;
-  cursor: pointer;
-}
-.project-checkbox-text {
-  flex: 1;
-  min-width: 0;
-  line-height: 1.35;
-  word-break: break-word;
-}
-.picker-actions {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 12px;
-  flex-shrink: 0;
-  padding-top: 4px;
-}
-.secondary-btn {
-  height: 34px;
-  padding: 0 14px;
-  border-radius: 8px;
-  border: none;
-  background: #eef2ff;
-  color: #4f46e5;
-  font-size: 12px;
-  font-weight: 700;
-  cursor: pointer;
-}
-.secondary-btn:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
 }
 
 .tasks-list {
@@ -2773,23 +2616,6 @@ onActivated(() => {
 }
 
 @media (max-width: 768px) {
-  .selected-panel.project-picker-panel {
-    width: calc(100vw - 24px);
-    max-height: 90vh;
-    padding: 16px;
-  }
-  .project-checkbox-list {
-    max-height: 50vh;
-    min-height: 200px;
-  }
-  .project-checkbox-label {
-    padding: 16px 14px;
-    font-size: 16px;
-  }
-  .project-checkbox-input {
-    width: 22px;
-    height: 22px;
-  }
   .sticky-col-project {
     width: 140px;
     min-width: 140px;
