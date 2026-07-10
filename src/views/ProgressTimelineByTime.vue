@@ -15,6 +15,7 @@ import {
   type ProjectProgress,
 } from "@/composables/useProjectProgress";
 import { useBytimeScrollAfterReload } from "@/composables/useBytimeScrollAfterReload";
+import { useBytimeMonthColWidth } from "@/composables/useBytimeMonthColWidth";
 import ScrollToTopButton from "@/components/ScrollToTopButton.vue";
 import ProjectLoadProgressBanner from "@/components/ProjectLoadProgressBanner.vue";
 import PageToolbar from "@/components/PageToolbar.vue";
@@ -250,7 +251,6 @@ const MONTH_BUFFER = 3;
 const BYTIME_PROJECT_COL_W = 220;
 const BYTIME_UNSCHED_EXPANDED_W = 148;
 const BYTIME_UNSCHED_COLLAPSED_W = 80;
-const BYTIME_MONTH_COL_W = 154;
 
 type Ym = { y: number; m: number };
 
@@ -573,6 +573,9 @@ const monthColumnBillingAmounts = computed(() => {
   return amounts;
 });
 
+const { monthColWidthPx, monthColWidthStyle } =
+  useBytimeMonthColWidth(monthColumnBillingAmounts);
+
 /** 左側專案欄：該專案 sections 依狀態統計（含 0） */
 function projectSectionStatusCounts(item: ProjectProgress): {
   notStarted: number;
@@ -668,10 +671,11 @@ function scrollBytimeToCurrentMonthColumn() {
     ? BYTIME_UNSCHED_EXPANDED_W
     : BYTIME_UNSCHED_COLLAPSED_W;
   const leftGutter = BYTIME_PROJECT_COL_W + unschedW;
-  const colStart = leftGutter + idx * BYTIME_MONTH_COL_W;
+  const monthW = monthColWidthPx.value;
+  const colStart = leftGutter + idx * monthW;
 
   const viewport = h.clientWidth || b.clientWidth;
-  const targetScroll = colStart + BYTIME_MONTH_COL_W / 2 - viewport / 2;
+  const targetScroll = colStart + monthW / 2 - viewport / 2;
   const maxScroll = Math.max(0, h.scrollWidth - h.clientWidth);
   const nextLeft = Math.max(0, Math.min(targetScroll, maxScroll));
 
@@ -935,7 +939,11 @@ onActivated(() => {
       >
         沒有符合關鍵字的專案。
       </div>
-      <section v-else class="bytime-calendar-section">
+      <section
+        v-else
+        class="bytime-calendar-section"
+        :style="monthColWidthStyle"
+      >
         <div class="bytime-sticky-thead-wrap">
           <div
             ref="bytimeHeadScrollEl"
@@ -1761,6 +1769,10 @@ onActivated(() => {
   display: none;
   height: 0;
 }
+.bytime-table-scroll::-webkit-scrollbar {
+  display: none;
+  height: 0;
+}
 .bytime-table-scroll {
   position: relative;
   width: 100%;
@@ -1788,9 +1800,9 @@ onActivated(() => {
   max-width: 148px;
 }
 .bytime-col-month {
-  width: 154px;
-  min-width: 154px;
-  max-width: 154px;
+  width: var(--bytime-month-col-w, 154px);
+  min-width: var(--bytime-month-col-w, 154px);
+  max-width: var(--bytime-month-col-w, 154px);
 }
 .bytime-grid-table.unsched-col-collapsed .bytime-col-unsched {
   width: 80px;
@@ -1843,6 +1855,11 @@ onActivated(() => {
   vertical-align: middle;
   padding: 8px 6px;
   background: #f9fafb;
+  width: var(--bytime-month-col-w, 154px);
+  min-width: var(--bytime-month-col-w, 154px);
+  max-width: var(--bytime-month-col-w, 154px);
+  box-sizing: border-box;
+  overflow: visible;
 }
 .th-month-inner {
   display: flex;
@@ -2148,7 +2165,7 @@ onActivated(() => {
 .bytime-body-row > td.bytime-cell-stack:not(.sticky-col-unsched) {
   position: relative;
   min-width: 0;
-  max-width: 154px;
+  max-width: var(--bytime-month-col-w, 154px);
   overflow-x: hidden;
   overflow-wrap: break-word;
   word-break: break-word;
@@ -2639,12 +2656,12 @@ onActivated(() => {
     max-width: 112px;
   }
   .bytime-col-month {
-    width: 132px;
-    min-width: 132px;
-    max-width: 132px;
+    width: var(--bytime-month-col-w, 132px);
+    min-width: var(--bytime-month-col-w, 132px);
+    max-width: var(--bytime-month-col-w, 132px);
   }
   .bytime-body-row > td.bytime-cell-stack:not(.sticky-col-unsched) {
-    max-width: 132px;
+    max-width: var(--bytime-month-col-w, 132px);
   }
   .bytime-grid-table.unsched-col-collapsed .bytime-col-unsched {
     width: 64px;
