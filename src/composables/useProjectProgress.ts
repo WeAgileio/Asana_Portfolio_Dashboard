@@ -1,4 +1,6 @@
 import { ref, computed, watch, nextTick, onUnmounted } from "vue";
+import { getDemoDefaultSelectedProjectGids } from "@/demo/demoDataset";
+import { isDemoMode } from "@/demo/isDemoMode";
 import { useAuthStore } from "@/stores/auth";
 import {
   fetchProjects,
@@ -238,6 +240,12 @@ function persistSelectedToLocalStorage() {
   }
 }
 
+function applyDemoDefaultSelectionIfNeeded() {
+  if (!isDemoMode() || selectedProjectGids.value.length > 0) return;
+  selectedProjectGids.value = getDemoDefaultSelectedProjectGids();
+  persistSelectedToLocalStorage();
+}
+
 function ensureProgressCoreWatchers() {
   if (progressCoreWatchersReady) return;
   progressCoreWatchersReady = true;
@@ -263,6 +271,7 @@ function ensureProgressCoreWatchers() {
         return;
       }
       selectedProjectGids.value = loadSelectedFromLocalStorage();
+      applyDemoDefaultSelectionIfNeeded();
     },
     { immediate: true, flush: "post" }
   );
@@ -598,6 +607,7 @@ async function bootstrapFromStorage() {
   await auth.loadFromStorage();
   if (!auth.getTokenHash()) return;
   selectedProjectGids.value = loadSelectedFromLocalStorage();
+  applyDemoDefaultSelectionIfNeeded();
   if (didBootstrapProgressLoad) return;
   didBootstrapProgressLoad = true;
   void loadProgress();

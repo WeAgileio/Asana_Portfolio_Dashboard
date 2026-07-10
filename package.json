@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "dev:all": "concurrently -n server,vite -c blue,magenta \"npm run server\" \"npm run dev\"",
+    "dev:demo": "vite",
     "build": "vue-tsc && vite build",
     "preview": "vite preview",
     "server": "node server/index.mjs"

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, type Component } from "vue";
+import { isDemoMode } from "@/demo/isDemoMode";
 import { useAuthStore } from "@/stores/auth";
 import Login from "@/views/Login.vue";
 import WeeklyTrends from "@/views/WeeklyTrends.vue";
@@ -8,6 +9,7 @@ import BillingTasks from "@/views/BillingTasks.vue";
 import BillingTasksByTime from "@/views/BillingTasksByTime.vue";
 
 const auth = useAuthStore();
+const demoMode = isDemoMode();
 
 type Tab =
   | "trends"
@@ -37,8 +39,11 @@ onMounted(() => {
     <Login v-else-if="!auth.isLoggedIn" />
     <template v-else>
     <nav class="top-nav" aria-label="主要導覽">
-      <div class="nav-tabs">
+      <div class="nav-left">
+        <span v-if="demoMode" class="demo-badge">展示模式 · 示意資料</span>
+        <div class="nav-tabs">
         <button
+          v-if="!demoMode"
           type="button"
           class="nav-tab"
           :class="{ active: currentTab === 'trends' }"
@@ -70,8 +75,10 @@ onMounted(() => {
         >
           請款進展·時間序
         </button>
+        </div>
       </div>
       <button
+        v-if="!demoMode"
         type="button"
         class="nav-logout"
         @click="auth.clearToken()"
@@ -112,6 +119,24 @@ onMounted(() => {
   align-items: center;
   gap: 8px 10px;
   min-width: 0;
+}
+.nav-left {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 14px;
+  min-width: 0;
+}
+.demo-badge {
+  flex-shrink: 0;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #92400e;
+  background: #fef3c7;
+  border: 1px solid #fcd34d;
+  line-height: 1.3;
 }
 .nav-tab {
   border: none;

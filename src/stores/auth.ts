@@ -1,8 +1,12 @@
 import { defineStore } from "pinia";
 import { ref, computed } from "vue";
+import { isDemoMode } from "@/demo/isDemoMode";
 import { encrypt, decrypt } from "@/utils/storageEncrypt";
 
 const STORAGE_KEY = "asana_pat_enc";
+/** Demo 部署用固定 token；不會發送至 Asana */
+export const DEMO_TOKEN = "__demo__";
+export const DEMO_TOKEN_HASH = "demo";
 
 /** 非安全環境（http 非 localhost）時 crypto.subtle 不可用，改用簡單雜湊區分不同 PAT */
 function hashTokenFallback(token: string): string {
@@ -41,8 +45,18 @@ export const useAuthStore = defineStore("auth", () => {
   const isLoggedIn = computed(() => !!token.value);
 
   /** 從 localStorage 讀取並解密後寫入 memory；解密失敗時不刪除儲存內容，避免重新整理誤刪 PAT */
+  function applyDemoSession(): void {
+    token.value = DEMO_TOKEN;
+    tokenHash.value = DEMO_TOKEN_HASH;
+  }
+
   async function loadFromStorage(): Promise<void> {
     if (initialized.value) return;
+    if (isDemoMode()) {
+      applyDemoSession();
+      initialized.value = true;
+      return;
+    }
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
       if (!raw) {
@@ -76,8 +90,12 @@ export const useAuthStore = defineStore("auth", () => {
     tokenHash.value = await hashToken(trimmed);
   }
 
-  /** 登出：清除 memory 與 localStorage */
+  /** 登出：清除 memory 與 localStorage；demo 模式改為重新注入展示 session */
   function clearToken(): void {
+    if (isDemoMode()) {
+      applyDemoSession();
+      return;
+    }
     token.value = null;
     tokenHash.value = null;
     localStorage.removeItem(STORAGE_KEY);

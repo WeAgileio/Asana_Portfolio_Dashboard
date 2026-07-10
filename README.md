@@ -193,6 +193,38 @@ docker run -p 3001:3001 --env-file .env yuminggood/asana_dashboard:latest
 
 瀏覽器：<http://localhost:3001>
 
+### 展示部署（Demo Mode）
+
+用於 **live demo**：虛構專案／請款資料，**不需 PAT**，隱藏「十週更新統計」。建置時以 **`VITE_DEMO_MODE=true`** 寫入前端 bundle（與正式映像分開 tag）。
+
+**本機開發驗證**（展示模式僅需 Vite，mock 在前端、不需後端）：
+
+```bash
+make demo
+# 或
+VITE_DEMO_MODE=true npm run dev:demo
+```
+
+瀏覽 <http://localhost:5173>，應直接進入儀表板並顯示「展示模式 · 示意資料」。
+
+**建置 demo 映像**：
+
+```bash
+docker build -t yuminggood/asana_dashboard:demo \
+  --build-arg VITE_DEMO_MODE=true \
+  --build-arg VITE_BILLING_FIELD=請款金額 \
+  --build-arg VITE_BILLING_TASK_FIELD=請款進展 .
+```
+
+**獨立 compose**（[`docker-compose.demo.yml`](docker-compose.demo.yml)，預設對外 **3002**）：
+
+```bash
+docker compose -f docker-compose.demo.yml pull
+docker compose -f docker-compose.demo.yml up -d
+```
+
+Demo 容器**請勿**設定 `ASANA_DEFAULT_PAT`；展示資料全為前端 mock，不連線真實 Asana。
+
 ### GitHub Release 後自動推送 Docker Hub
 
 建立 **GitHub Release** 並**發佈**（`published`）時，會執行 [`.github/workflows/docker-publish.yml`](.github/workflows/docker-publish.yml)：以 **buildx** 建置 **linux/amd64** 與 **linux/arm64/v8**，並推送 **`yuminggood/asana_dashboard:latest`**、**發佈標籤**（若標籤為 `v1.x.x` 會另推送 **`1.x.x`**）。
@@ -227,6 +259,7 @@ server/
 
 src/
 ├── api/asana.ts              # Asana API 與請款欄位等解析
+├── demo/                     # 展示模式 mock 與假資料生成
 ├── composables/
 │   └── useProjectProgress.ts # 專案進展等共用狀態與載入
 ├── components/               # 圓形／線性進度、Section 卡片等

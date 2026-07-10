@@ -1,5 +1,12 @@
 import axios from "axios";
 import { useAuthStore } from "@/stores/auth";
+import {
+  getDemoProjectByGid,
+  getDemoProjects,
+  getDemoSectionsByProject,
+  getDemoTasksBySection,
+} from "@/demo/demoApi";
+import { isDemoMode } from "@/demo/isDemoMode";
 import type {
   AsanaProject,
   AsanaSection,
@@ -70,6 +77,9 @@ const PROJECT_MEMBERS_OPT = "members,members.name";
 
 /** 依 workspace 分頁取得「全部」專案（Asana 要求分頁時必須指定 workspace） */
 export async function fetchProjects(): Promise<AsanaProject[]> {
+  if (isDemoMode()) {
+    return getDemoProjects();
+  }
   const workspaces = await fetchWorkspaces();
   const byGid = new Map<string, AsanaProject>();
 
@@ -122,6 +132,9 @@ export async function fetchProjects(): Promise<AsanaProject[]> {
 }
 
 export async function fetchProject(projectGid: string): Promise<AsanaProject> {
+  if (isDemoMode()) {
+    return getDemoProjectByGid(projectGid);
+  }
   const res = await api.get(`/projects/${projectGid}`, {
     params: {
       opt_fields:
@@ -147,6 +160,9 @@ export async function fetchProject(projectGid: string): Promise<AsanaProject> {
 export async function fetchSectionsByProject(
   projectGid: string
 ): Promise<AsanaSection[]> {
+  if (isDemoMode()) {
+    return getDemoSectionsByProject(projectGid);
+  }
   const res = await api.get(`/projects/${projectGid}/sections`, {
     params: { opt_fields: "gid,name" },
   });
@@ -329,6 +345,9 @@ function billingAmountFromCustomField(cf: Record<string, unknown> | null): numbe
 export async function fetchTasksBySection(
   sectionGid: string
 ): Promise<AsanaTask[]> {
+  if (isDemoMode()) {
+    return getDemoTasksBySection(sectionGid);
+  }
   const allTasks: AsanaTask[] = [];
   let offset: string | undefined = undefined;
 

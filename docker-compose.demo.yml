@@ -1,0 +1,20 @@
+# 展示環境：獨立 demo 映像，虛構資料、不需 Asana PAT。
+#
+# 建置 demo 映像（本機有 Dockerfile 時）：
+#   docker build --build-arg VITE_DEMO_MODE=true -t yuminggood/asana_dashboard:demo .
+#
+# 啟動：
+#   docker compose -f docker-compose.demo.yml pull
+#   docker compose -f docker-compose.demo.yml up -d
+#
+# 對外預設 http://localhost:3002
+
+services:
+  app:
+    image: ${DASHBOARD_DEMO_IMAGE:-yuminggood/asana_dashboard:demo}
+    ports:
+      - "3002:3001"
+    environment:
+      NODE_ENV: production
+      PORT: ${PORT:-3001}
+    restart: unless-stopped
