@@ -573,8 +573,7 @@ const monthColumnBillingAmounts = computed(() => {
   return amounts;
 });
 
-const { monthColWidthPx, monthColWidthStyle } =
-  useBytimeMonthColWidth(monthColumnBillingAmounts);
+const { monthColWidthPx, monthColWidthStyle } = useBytimeMonthColWidth();
 
 /** 左側專案欄：該專案 sections 依狀態統計（含 0） */
 function projectSectionStatusCounts(item: ProjectProgress): {
@@ -1800,9 +1799,9 @@ onActivated(() => {
   max-width: 148px;
 }
 .bytime-col-month {
-  width: var(--bytime-month-col-w, 154px);
-  min-width: var(--bytime-month-col-w, 154px);
-  max-width: var(--bytime-month-col-w, 154px);
+  width: var(--bytime-month-col-w, 208px);
+  min-width: var(--bytime-month-col-w, 208px);
+  max-width: var(--bytime-month-col-w, 208px);
 }
 .bytime-grid-table.unsched-col-collapsed .bytime-col-unsched {
   width: 80px;
@@ -1855,9 +1854,9 @@ onActivated(() => {
   vertical-align: middle;
   padding: 8px 6px;
   background: #f9fafb;
-  width: var(--bytime-month-col-w, 154px);
-  min-width: var(--bytime-month-col-w, 154px);
-  max-width: var(--bytime-month-col-w, 154px);
+  width: var(--bytime-month-col-w, 208px);
+  min-width: var(--bytime-month-col-w, 208px);
+  max-width: var(--bytime-month-col-w, 208px);
   box-sizing: border-box;
   overflow: visible;
 }
@@ -1914,12 +1913,14 @@ onActivated(() => {
   align-items: baseline;
   justify-content: center;
   gap: 4px;
+  max-width: 100%;
   font-size: 11px;
   font-weight: 700;
   color: #374151;
   line-height: 1.15;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
+  overflow-x: hidden;
 }
 .th-month-billing-collected {
   color: #16a34a;
@@ -2164,8 +2165,9 @@ onActivated(() => {
 /* 僅月欄 td 需要 position:relative（給載入遮罩）；專案／未排 th,td 必須維持 sticky，勿覆寫成 relative */
 .bytime-body-row > td.bytime-cell-stack:not(.sticky-col-unsched) {
   position: relative;
-  min-width: 0;
-  max-width: var(--bytime-month-col-w, 154px);
+  width: var(--bytime-month-col-w, 208px);
+  min-width: var(--bytime-month-col-w, 208px);
+  max-width: var(--bytime-month-col-w, 208px);
   overflow-x: hidden;
   overflow-wrap: break-word;
   word-break: break-word;
@@ -2656,12 +2658,12 @@ onActivated(() => {
     max-width: 112px;
   }
   .bytime-col-month {
-    width: var(--bytime-month-col-w, 132px);
-    min-width: var(--bytime-month-col-w, 132px);
-    max-width: var(--bytime-month-col-w, 132px);
+    width: var(--bytime-month-col-w, 208px);
+    min-width: var(--bytime-month-col-w, 208px);
+    max-width: var(--bytime-month-col-w, 208px);
   }
   .bytime-body-row > td.bytime-cell-stack:not(.sticky-col-unsched) {
-    max-width: var(--bytime-month-col-w, 132px);
+    max-width: var(--bytime-month-col-w, 208px);
   }
   .bytime-grid-table.unsched-col-collapsed .bytime-col-unsched {
     width: 64px;
