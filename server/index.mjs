@@ -43,6 +43,7 @@ try {
   process.exit(1);
 }
 const NOTION_ROOT_PAGE_ID = resolveRootPageId(process.env.NOTION_ROOT_PAGE_ID);
+const NOTION_TOKEN = String(process.env.NOTION_TOKEN || "").trim();
 
 const {
   ASANA_CLIENT_ID,
@@ -93,9 +94,14 @@ function bearerToken(req) {
   return null;
 }
 
+function notionAccessToken(req) {
+  if (NOTION_TOKEN) return NOTION_TOKEN;
+  return bearerToken(req);
+}
+
 function requireAuth(req, res, next) {
   if (DATA_SOURCE === "notion") {
-    if (bearerToken(req)) return next();
+    if (notionAccessToken(req)) return next();
     return res.status(401).json({
       message: "尚未登入，請輸入 Notion 整合金鑰。",
     });
@@ -308,7 +314,9 @@ function apiCacheSet(cacheKey, data, ttlMs) {
 }
 
 app.get("/api/config", (_req, res) => {
-  res.json({ dataSource: DATA_SOURCE });
+  const body = { dataSource: DATA_SOURCE };
+  if (DATA_SOURCE === "notion") body.authRequired = !NOTION_TOKEN;
+  res.json(body);
 });
 
 app.get("/api/notion/access", async (req, res) => {
@@ -341,7 +349,7 @@ app.get("/api/notion/access", async (req, res) => {
 // 將前端的 GET /api/* 轉發到 Asana API；Notion 模式改由專案總表組出相同形狀
 app.get("/api/*", requireAuth, async (req, res) => {
   const accessToken =
-    DATA_SOURCE === "notion" ? bearerToken(req) : getAccessToken(req);
+    DATA_SOURCE === "notion" ? notionAccessToken(req) : getAccessToken(req);
   if (!accessToken) {
     return res.status(401).json({
       message:
@@ -434,6 +442,7 @@ if (isExecutedDirectly()) {
   console.log("[config] 後端採用：");
   console.log(`  DATA_SOURCE=${DATA_SOURCE}`);
   console.log(`  NOTION_ROOT_PAGE_ID=${NOTION_ROOT_PAGE_ID}`);
+  console.log(`  NOTION_TOKEN=${NOTION_TOKEN ? "（已設定）" : "（未設定）"}`);
   console.log(`  PORT=${PORT}`);
   app.listen(PORT, () => {
     const modeHint = existsSync(distPath)

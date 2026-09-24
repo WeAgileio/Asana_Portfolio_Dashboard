@@ -188,8 +188,8 @@ test("非法 DATA_SOURCE 讓程序退出並印出該值", async () => {
 
 test("未設定 DATA_SOURCE 時 /api/config 是 asana", async () => {
   const port = 9877;
-  const env = { ...process.env, PORT: String(port) };
-  delete env.DATA_SOURCE;
+  const env = { ...process.env, PORT: String(port), DATA_SOURCE: "" };
+  delete env.NOTION_TOKEN;
   const child = spawn(process.execPath, ["server/index.mjs"], {
     env,
     cwd: fileURLToPath(new URL("..", import.meta.url)),
@@ -224,7 +224,7 @@ test("未設定 DATA_SOURCE 時 /api/config 是 asana", async () => {
 
 test("DATA_SOURCE=notion 時 /api/config 是 notion", async () => {
   const port = 9876;
-  const child = runServer({ DATA_SOURCE: "notion", PORT: String(port) });
+  const child = runServer({ DATA_SOURCE: "notion", NOTION_TOKEN: "", PORT: String(port) });
   let stdout = "";
   child.stdout.on("data", (chunk) => {
     stdout += chunk;
@@ -249,7 +249,46 @@ test("DATA_SOURCE=notion 時 /api/config 是 notion", async () => {
     const res = await fetch(`http://127.0.0.1:${port}/api/config`);
     assert.equal(res.status, 200);
     const body = await res.json();
-    assert.deepEqual(body, { dataSource: "notion" });
+    assert.deepEqual(body, { dataSource: "notion", authRequired: true });
+  } finally {
+    child.kill();
+  }
+});
+
+test("NOTION_TOKEN 有值時略過登入，且設定回應不含金鑰", async () => {
+  const port = 9875;
+  const child = runServer({
+    DATA_SOURCE: "notion",
+    NOTION_TOKEN: "secret-from-env",
+    PORT: String(port),
+  });
+  let stdout = "";
+  child.stdout.on("data", (chunk) => {
+    stdout += chunk;
+  });
+  await new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(stdout || "server did not start")), 8000);
+    const tick = setInterval(() => {
+      if (stdout.includes("監聽埠")) {
+        clearInterval(tick);
+        clearTimeout(timer);
+        resolve();
+      }
+    }, 50);
+    child.on("exit", (code) => {
+      clearInterval(tick);
+      clearTimeout(timer);
+      reject(new Error(`server exited ${code}: ${stdout}`));
+    });
+  });
+  try {
+    const configRes = await fetch(`http://127.0.0.1:${port}/api/config`);
+    const config = await configRes.json();
+    assert.equal(config.authRequired, false);
+    assert.equal(JSON.stringify(config).includes("secret-from-env"), false);
+    const projectsRes = await fetch(`http://127.0.0.1:${port}/api/projects`);
+    const projects = await projectsRes.json();
+    assert.notEqual(projects.message, "尚未登入，請輸入 Notion 整合金鑰。");
   } finally {
     child.kill();
   }

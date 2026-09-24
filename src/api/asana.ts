@@ -50,7 +50,8 @@ api.interceptors.request.use(async (config) => {
 api.interceptors.response.use(
   (res) => res,
   (err) => {
-    if (err.response?.status === 401) useAuthStore().clearToken();
+    const auth = useAuthStore();
+    if (err.response?.status === 401 && !auth.serverHoldsNotionToken) auth.clearToken();
     return Promise.reject(err);
   }
 );

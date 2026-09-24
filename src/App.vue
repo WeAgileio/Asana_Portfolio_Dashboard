@@ -79,7 +79,7 @@ onMounted(async () => {
         </div>
       </div>
       <button
-        v-if="!demoMode"
+        v-if="!demoMode && !auth.serverHoldsNotionToken"
         type="button"
         class="nav-logout"
         @click="auth.clearToken()"

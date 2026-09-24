@@ -17,7 +17,7 @@
 #    DASHBOARD_IMAGE=你的帳號/你的倉庫:標籤（會覆寫預設）。
 #
 # 若要固定寫死特定版本，可直接改 image 行，例如：
-#   image: yuminggood/asana_dashboard:v0.2.2
+#   image: yuminggood/asana_dashboard:v1.13.0
 #
 # ── 若要在有原始碼的機器上「本地建置」映像（開發/CI），可暫時加上 build： ──
 #   build:
@@ -33,11 +33,16 @@ services:
     # 若部署主機為 ARM64，可取消下一行註解強制平台
     # platform: linux/arm64/v8
     # 可於同目錄 .env 設定 DASHBOARD_IMAGE 覆寫（方便換帳號/私有庫/其它 Registry）
-    image: ${DASHBOARD_IMAGE:-yuminggood/asana_dashboard:latest}
+    # 預設釘在 v1.13.0：此版會讀 DATA_SOURCE，且 NOTION_TOKEN 有值時略過登入卡。
+    image: ${DASHBOARD_IMAGE:-yuminggood/asana_dashboard:v1.13.0}
     ports:
       - "3001:3001"
     environment:
       NODE_ENV: production
       PORT: ${PORT:-3001}
-      # 請款欄位屬前端建置期嵌入；請在 docker build 使用 --build-arg VITE_BILLING_FIELD=...
+      # 執行期資料來源。同目錄 .env 的 DATA_SOURCE 會代進來；未設定時為 asana。
+      # 改完重啟容器即可，不必重建映像。NOTION_TOKEN 有值時略過登入卡。
+      DATA_SOURCE: ${DATA_SOURCE:-asana}
+      NOTION_ROOT_PAGE_ID: ${NOTION_ROOT_PAGE_ID:-3e353bdeb3b1803ea05ec8b6873d9f4d}
+      NOTION_TOKEN: ${NOTION_TOKEN:-}
     restart: unless-stopped

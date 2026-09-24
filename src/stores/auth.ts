@@ -44,8 +44,10 @@ export const useAuthStore = defineStore("auth", () => {
   /** 是否已嘗試從 localStorage 還原（避免閃爍） */
   const initialized = ref(false);
   const dataSource = ref<"asana" | "notion">("asana");
+  /** 伺服器 .env 已有整合金鑰時，瀏覽器不保存、也不傳送金鑰 */
+  const serverHoldsNotionToken = ref(false);
 
-  const isLoggedIn = computed(() => !!token.value);
+  const isLoggedIn = computed(() => serverHoldsNotionToken.value || !!token.value);
 
   function storageKey(): string {
     return dataSource.value === "notion" ? NOTION_STORAGE_KEY : ASANA_STORAGE_KEY;
@@ -57,9 +59,12 @@ export const useAuthStore = defineStore("auth", () => {
     try {
       const res = await axios.get("/api/config");
       dataSource.value = res.data?.dataSource === "notion" ? "notion" : "asana";
+      serverHoldsNotionToken.value =
+        dataSource.value === "notion" && res.data?.authRequired === false;
     } catch (e) {
       console.warn("[auth] 讀取資料來源失敗，沿用 Asana", e);
       dataSource.value = "asana";
+      serverHoldsNotionToken.value = false;
     }
   }
 
@@ -73,6 +78,12 @@ export const useAuthStore = defineStore("auth", () => {
     if (initialized.value) return;
     if (isDemoMode()) {
       applyDemoSession();
+      initialized.value = true;
+      return;
+    }
+    if (serverHoldsNotionToken.value) {
+      token.value = null;
+      tokenHash.value = "notion-env";
       initialized.value = true;
       return;
     }
@@ -128,6 +139,7 @@ export const useAuthStore = defineStore("auth", () => {
   /** 取得目前權杖（memory），若尚未 load 會先等 loadFromStorage */
   async function getToken(): Promise<string | null> {
     if (!initialized.value) await loadFromStorage();
+    if (serverHoldsNotionToken.value) return null;
     return token.value;
   }
 
@@ -137,6 +149,7 @@ export const useAuthStore = defineStore("auth", () => {
     initialized,
     isLoggedIn,
     dataSource,
+    serverHoldsNotionToken,
     loadDataSource,
     loadFromStorage,
     saveToken,

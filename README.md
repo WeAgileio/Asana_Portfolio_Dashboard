@@ -95,8 +95,11 @@ cp .env.example .env
 
 | 變數 | 說明 |
 |------|------|
-| `DASHBOARD_IMAGE` | **選用。** 覆寫預設映像（預設 `yuminggood/asana_dashboard:latest`） |
+| `DASHBOARD_IMAGE` | **選用。** 覆寫預設映像（預設 `yuminggood/asana_dashboard:v1.13.0`） |
 | `PORT` | **選用。** 容器內後端埠，預設 `3001`（對應 compose 內 `PORT: ${PORT:-3001}`） |
+| `DATA_SOURCE` | **選用。** `asana`（預設）或 `notion`。由 compose 傳入容器，改完重啟即可，不必重建映像 |
+| `NOTION_ROOT_PAGE_ID` | **選用。** Notion 專案總表根頁面 ID。未設定時用預設總表 |
+| `NOTION_TOKEN` | **選用。** Notion 整合金鑰。有填時略過登入卡，由伺服器代讀；沒填則仍用登入卡。不要提交到版本庫 |
 
 `docker-compose.prod.yml` **範例未**逐條列出 `ASANA_*`／`SESSION_SECRET`；部署時請在平台環境變數、自行加上 `env_file: .env`，或擴充 `environment`，讓容器內與本機一樣具備 OAuth 所需變數。
 
@@ -240,7 +243,8 @@ Demo 容器**請勿**設定 `ASANA_DEFAULT_PAT`；展示資料全為前端 mock�
 
 ### 正式環境 Compose（`docker-compose.prod.yml`）
 
-- 預設 **`image: yuminggood/asana_dashboard:latest`**（或於同目錄 `.env` 設定 `DASHBOARD_IMAGE`）。
+- 預設 **`image: yuminggood/asana_dashboard:v1.13.0`**（或於同目錄 `.env` 設定 `DASHBOARD_IMAGE`）。
+- 同目錄 `.env` 的 **`DATA_SOURCE`**、**`NOTION_ROOT_PAGE_ID`**、**`NOTION_TOKEN`** 會傳進容器。未設定時來源為 Asana。有整合金鑰則略過登入卡。
 - 對外對應 **3001**；環境變數可寫在與 compose 同目錄的 `.env`（群暉等環境相容說明見檔案內註解）。
 - 若主機是 ARM64 且要強制指定平台，可在 compose 服務加上 `platform: linux/arm64/v8`。
 
@@ -290,7 +294,13 @@ docker-compose.prod.yml
 
 ## 版本紀錄
 
-### v1.12.0（目前 `package.json` 版本）
+### v1.13.0（目前 `package.json` 版本）
+
+- **伺服器整合金鑰**：Notion 模式可把整合金鑰放在伺服器。有填就略過登入卡，打開網址即可看；沒填仍用登入卡。
+- **正式部署**：compose 會把資料來源與整合金鑰傳進容器。
+- **破壞性變更**：無。
+
+### v1.12.0
 
 - **Notion 資料來源**：可在設定檔改從 Notion 專案總表讀取專案、階段與請款，預設仍為 Asana；改設定後重啟即切換，不必重新建置。
 - **登入**：Notion 模式用登入卡輸入整合金鑰，與 Asana PAT 分開存放；展示模式不受影響。
