@@ -1,9 +1,11 @@
+import axios from "axios";
 import { defineStore } from "pinia";
 import { ref, computed } from "vue";
 import { isDemoMode } from "@/demo/isDemoMode";
 import { encrypt, decrypt } from "@/utils/storageEncrypt";
 
-const STORAGE_KEY = "asana_pat_enc";
+const ASANA_STORAGE_KEY = "asana_pat_enc";
+const NOTION_STORAGE_KEY = "notion_token_enc";
 /** Demo 部署用固定 token；不會發送至 Asana */
 export const DEMO_TOKEN = "__demo__";
 export const DEMO_TOKEN_HASH = "demo";
@@ -41,8 +43,25 @@ export const useAuthStore = defineStore("auth", () => {
   const tokenHash = ref<string | null>(null);
   /** 是否已嘗試從 localStorage 還原（避免閃爍） */
   const initialized = ref(false);
+  const dataSource = ref<"asana" | "notion">("asana");
 
   const isLoggedIn = computed(() => !!token.value);
+
+  function storageKey(): string {
+    return dataSource.value === "notion" ? NOTION_STORAGE_KEY : ASANA_STORAGE_KEY;
+  }
+
+  /** 非展示模式時讀後端設定。失敗則維持 Asana。 */
+  async function loadDataSource(): Promise<void> {
+    if (isDemoMode()) return;
+    try {
+      const res = await axios.get("/api/config");
+      dataSource.value = res.data?.dataSource === "notion" ? "notion" : "asana";
+    } catch (e) {
+      console.warn("[auth] 讀取資料來源失敗，沿用 Asana", e);
+      dataSource.value = "asana";
+    }
+  }
 
   /** 從 localStorage 讀取並解密後寫入 memory；解密失敗時不刪除儲存內容，避免重新整理誤刪 PAT */
   function applyDemoSession(): void {
@@ -58,7 +77,7 @@ export const useAuthStore = defineStore("auth", () => {
       return;
     }
     try {
-      const raw = localStorage.getItem(STORAGE_KEY);
+      const raw = localStorage.getItem(storageKey());
       if (!raw) {
         initialized.value = true;
         return;
@@ -85,7 +104,7 @@ export const useAuthStore = defineStore("auth", () => {
     const trimmed = (pat || "").trim();
     if (!trimmed) return;
     const cipher = await encrypt(trimmed);
-    localStorage.setItem(STORAGE_KEY, cipher);
+    localStorage.setItem(storageKey(), cipher);
     token.value = trimmed;
     tokenHash.value = await hashToken(trimmed);
   }
@@ -98,7 +117,7 @@ export const useAuthStore = defineStore("auth", () => {
     }
     token.value = null;
     tokenHash.value = null;
-    localStorage.removeItem(STORAGE_KEY);
+    localStorage.removeItem(storageKey());
   }
 
   /** 目前權杖的雜湊，用於依 PAT 區分的儲存鍵（例如專案選擇）；未登入為 null */
@@ -117,6 +136,8 @@ export const useAuthStore = defineStore("auth", () => {
     tokenHash,
     initialized,
     isLoggedIn,
+    dataSource,
+    loadDataSource,
     loadFromStorage,
     saveToken,
     clearToken,

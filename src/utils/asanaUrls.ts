@@ -89,11 +89,19 @@ function ensureProjectNotePath(candidate: string, project: AsanaProject): string
 }
 
 /**
- * 在瀏覽器開啟專案 **Notes** 的連結。
- * 固定為 `https://app.asana.com/1/{workspace}/project/{專案}/note`，不在 `/note` 後面加
+ * 在瀏覽器開啟專案的連結。
+ * 若已存的網址不是 Asana（例如 Notion 頁面），原樣回傳。
+ * Asana 則固定為 `https://app.asana.com/1/{workspace}/project/{專案}/note`，不在 `/note` 後面加
  * brief 或其它 id；若從 API 帶到 `.../note/{id}` 會盡量收斂成上述形式。
  */
 export function asanaProjectNotesUrl(project: AsanaProject): string {
+  const stored =
+    project.notes_permalink_url?.trim() ||
+    project.project_permalink_url?.trim() ||
+    "";
+  if (stored && !/app\.asana\.com/i.test(stored)) {
+    return stored;
+  }
   const ws = project.workspace_gid?.trim() || null;
   const pg = project.gid;
   let candidate: string;

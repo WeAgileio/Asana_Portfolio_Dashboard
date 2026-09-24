@@ -6,6 +6,9 @@ import {
   onUnmounted,
   nextTick,
 } from "vue";
+import { useAuthStore } from "@/stores/auth";
+
+const auth = useAuthStore();
 
 const STORAGE_KEY = "pageToolbarHidden";
 
@@ -146,7 +149,7 @@ watch(
           type="button"
           class="resync-btn"
           :disabled="loading"
-          title="略過伺服器快取，向 Asana 重新拉取最新資料"
+          :title="auth.dataSource === 'notion' ? '略過伺服器快取，向 Notion 重新拉取最新資料' : '略過伺服器快取，向 Asana 重新拉取最新資料'"
           @click="emit('resync')"
         >
           {{ loading ? "載入中…" : "重新同步數據" }}

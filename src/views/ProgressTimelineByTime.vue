@@ -27,6 +27,9 @@ import {
   type ProjectNameSortOrder,
 } from "@/utils/projectDisplaySort";
 import { asanaProjectNotesUrl } from "@/utils/asanaUrls";
+import { useAuthStore } from "@/stores/auth";
+
+const auth = useAuthStore();
 
 const {
   loading,
@@ -1138,8 +1141,8 @@ onActivated(() => {
                         :href="asanaProjectNotesUrl(item.project)"
                         target="_blank"
                         rel="noopener noreferrer"
-                        :title="'在 Asana 開啟專案狀態'"
-                        :aria-label="'在 Asana 開啟專案：' + item.project.name"
+                        :title="auth.dataSource === 'notion' ? '在 Notion 開啟專案' : '在 Asana 開啟專案狀態'"
+                        :aria-label="(auth.dataSource === 'notion' ? '在 Notion 開啟專案：' : '在 Asana 開啟專案：') + item.project.name"
                         @click.stop
                       >
                         {{ item.project.name }}
@@ -1151,7 +1154,9 @@ onActivated(() => {
                         :title="
                           item.loadingTasks
                             ? '載入中…'
-                            : '重新載入此專案（略過快取，向 Asana 取最新）'
+                            : auth.dataSource === 'notion'
+                              ? '重新載入此專案（略過快取，向 Notion 取最新）'
+                              : '重新載入此專案（略過快取，向 Asana 取最新）'
                         "
                         :aria-label="'重新載入專案：' + item.project.name"
                         @click.stop="
@@ -2192,6 +2197,11 @@ onActivated(() => {
   flex-direction: column;
   align-items: center;
   gap: 4px;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  overflow: hidden;
+  box-sizing: border-box;
 }
 .project-title-row {
   display: inline-flex;
@@ -2251,19 +2261,26 @@ onActivated(() => {
   flex-direction: column;
   gap: 1px;
   margin-top: 2px;
+  align-self: stretch;
   width: 100%;
+  max-width: 100%;
+  min-width: 0;
 }
 .project-year-line {
   display: grid;
-  grid-template-columns: 62px 1fr;
+  grid-template-columns: auto minmax(0, 1fr);
   align-items: center;
-  column-gap: 8px;
+  column-gap: 6px;
   line-height: 1.25;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
 }
 .project-year-line-current {
   background: rgba(96, 165, 250, 0.18);
   border-radius: 8px;
-  padding: 2px 8px;
+  padding: 2px 4px;
 }
 .project-year-label {
   color: #6b7280;
@@ -2278,23 +2295,26 @@ onActivated(() => {
   font-weight: 700;
 }
 .project-year-amount {
-  display: grid;
-  grid-template-columns: 1fr auto 1fr;
-  gap: 4px;
-  align-items: center;
+  display: flex;
+  justify-content: flex-end;
+  align-items: baseline;
+  gap: 2px;
+  min-width: 0;
+  overflow: hidden;
   color: #6b7280;
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 700;
+  font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
 .project-year-amount-current {
   color: #111827;
-  font-size: 14px;
+  font-size: 12px;
   font-weight: 700;
 }
 .project-year-amount-collected,
 .project-year-amount-total {
-  text-align: right;
+  min-width: 0;
 }
 .project-year-amount-slash {
   text-align: center;
@@ -2307,11 +2327,15 @@ onActivated(() => {
 }
 .project-total-row {
   display: grid;
-  grid-template-columns: 62px 1fr;
+  grid-template-columns: auto minmax(0, 1fr);
   align-items: center;
-  column-gap: 8px;
+  column-gap: 6px;
+  align-self: stretch;
   width: 100%;
+  max-width: 100%;
+  min-width: 0;
   margin-top: 2px;
+  box-sizing: border-box;
 }
 .project-total-pill {
   color: #22c55e;
@@ -2320,12 +2344,15 @@ onActivated(() => {
   text-align: center;
 }
 .project-total-amount {
-  display: grid;
-  grid-template-columns: 1fr auto 1fr;
-  gap: 4px;
-  align-items: center;
-  font-size: 13px;
+  display: flex;
+  justify-content: flex-end;
+  align-items: baseline;
+  gap: 2px;
+  min-width: 0;
+  overflow: hidden;
+  font-size: 12px;
   font-weight: 700;
+  font-variant-numeric: tabular-nums;
   color: #111827;
   white-space: nowrap;
 }
