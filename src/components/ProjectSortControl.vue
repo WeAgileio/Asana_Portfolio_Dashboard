@@ -1,6 +1,9 @@
 <script setup lang="ts">
 import { computed } from "vue";
 import type { ProjectNameSortOrder } from "@/utils/projectDisplaySort";
+import { useAuthStore } from "@/stores/auth";
+
+const auth = useAuthStore();
 
 const sortOrder = defineModel<ProjectNameSortOrder>({ default: "default" });
 
@@ -20,7 +23,9 @@ const hintText = computed(() => {
     case "asc":
       return "排序依據專案名稱小到大";
     default:
-      return "排序依據 Asana 回傳順序";
+      return auth.dataSource === "notion"
+        ? "排序依據 Notion 回傳順序"
+        : "排序依據 Asana 回傳順序";
   }
 });
 

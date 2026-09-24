@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from "vue";
+import { computed, ref } from "vue";
 import axios from "axios";
 import { useAuthStore } from "@/stores/auth";
 
@@ -7,19 +7,26 @@ const auth = useAuthStore();
 const pat = ref("");
 const error = ref("");
 const loading = ref(false);
+const isNotion = computed(() => auth.dataSource === "notion");
 
 async function login() {
   const token = (pat.value || "").trim();
   if (!token) {
-    error.value = "請輸入個人權杖（PAT）";
+    error.value = isNotion.value ? "請輸入 Notion 整合金鑰" : "請輸入個人權杖（PAT）";
     return;
   }
   error.value = "";
   loading.value = true;
   try {
-    await axios.get("/api/workspaces", {
-      headers: { Authorization: `Bearer ${token}` },
-    });
+    if (isNotion.value) {
+      await axios.get("/api/notion/access", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+    } else {
+      await axios.get("/api/workspaces", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+    }
     await auth.saveToken(token);
   } catch (e: any) {
     // 登入失敗時在 console 輸出詳細原因，方便除錯（例如 CORS、後端未啟動、網路錯誤）
@@ -39,9 +46,12 @@ async function login() {
       error: e,
     });
     const msg =
-      e.response?.data?.message || e.response?.status === 401
-        ? "權杖無效或已過期，請檢查後重試"
-        : "連線失敗，請稍後再試";
+      e.response?.data?.message ||
+      (e.response?.status === 401
+        ? isNotion.value
+          ? "整合金鑰無效，或專案總表尚未分享給此整合。"
+          : "權杖無效或已過期，請檢查後重試"
+        : "連線失敗，請稍後再試");
     error.value = msg;
   } finally {
     loading.value = false;
@@ -52,15 +62,21 @@ async function login() {
 <template>
   <div class="login-page">
     <div class="login-card">
-      <h1 class="login-title">Asana 儀表板</h1>
-      <p class="login-desc">請使用您的 Asana 個人權杖（Personal Access Token）登入後使用。</p>
+      <h1 class="login-title">{{ isNotion ? "Notion 儀表板" : "Asana 儀表板" }}</h1>
+      <p class="login-desc">
+        {{
+          isNotion
+            ? "請輸入 Notion 整合金鑰。專案總表必須已分享給這個整合。"
+            : "請使用您的 Asana 個人權杖（Personal Access Token）登入後使用。"
+        }}
+      </p>
       <form class="login-form" @submit.prevent="login">
-        <label class="label">個人權杖（PAT）</label>
+        <label class="label">{{ isNotion ? "整合金鑰" : "個人權杖（PAT）" }}</label>
         <input
           v-model="pat"
           type="password"
           class="input"
-          placeholder="輸入您的 Asana PAT"
+          :placeholder="isNotion ? '輸入 Notion 整合金鑰' : '輸入您的 Asana PAT'"
           autocomplete="off"
           :disabled="loading"
         />
@@ -70,17 +86,33 @@ async function login() {
         </button>
       </form>
       <p class="hint">
-        權杖會加密儲存於本機瀏覽器，僅供此應用呼叫 Asana API 使用。
+        {{
+          isNotion
+            ? "金鑰會加密儲存於本機瀏覽器，僅供此應用呼叫 Notion API 使用。"
+            : "權杖會加密儲存於本機瀏覽器，僅供此應用呼叫 Asana API 使用。"
+        }}
       </p>
       <p class="help-link">
-        取得個人權杖與 API 說明請見：
-        <a
-          href="https://help.asana.com/s/article/api?language=en_US"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          Asana API 說明
-        </a>
+        <template v-if="isNotion">
+          建立整合並分享專案總表：
+          <a
+            href="https://developers.notion.com/docs/create-a-notion-integration"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            Notion 整合說明
+          </a>
+        </template>
+        <template v-else>
+          取得個人權杖與 API 說明請見：
+          <a
+            href="https://help.asana.com/s/article/api?language=en_US"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            Asana API 說明
+          </a>
+        </template>
       </p>
     </div>
   </div>

@@ -15,6 +15,9 @@ import {
   type ProjectNameSortOrder,
 } from "@/utils/projectDisplaySort";
 import { asanaProjectNotesUrl } from "@/utils/asanaUrls";
+import { useAuthStore } from "@/stores/auth";
+
+const auth = useAuthStore();
 
 const isDraggingTimeline = ref(false);
 const dragStartX = ref(0);
@@ -226,8 +229,8 @@ const billingRows = computed(() => {
                   :href="asanaProjectNotesUrl(row.progress.project)"
                   target="_blank"
                   rel="noopener noreferrer"
-                  :title="'在 Asana 開啟專案狀態'"
-                  :aria-label="'在 Asana 開啟專案：' + row.progress.project.name"
+                  :title="auth.dataSource === 'notion' ? '在 Notion 開啟專案' : '在 Asana 開啟專案狀態'"
+                  :aria-label="(auth.dataSource === 'notion' ? '在 Notion 開啟專案：' : '在 Asana 開啟專案：') + row.progress.project.name"
                   @click.stop
                 >
                   {{ row.progress.project.name }}
@@ -239,7 +242,9 @@ const billingRows = computed(() => {
                   :title="
                     row.progress.loadingTasks
                       ? '載入中…'
-                      : '重新載入此專案（略過快取，向 Asana 取最新）'
+                      : auth.dataSource === 'notion'
+                        ? '重新載入此專案（略過快取，向 Notion 取最新）'
+                        : '重新載入此專案（略過快取，向 Asana 取最新）'
                   "
                   :aria-label="'重新載入專案：' + row.progress.project.name"
                   @click.stop="

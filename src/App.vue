@@ -28,8 +28,9 @@ const tabComponents: Record<Tab, Component> = {
 
 const currentView = computed(() => tabComponents[currentTab.value]);
 
-onMounted(() => {
-  auth.loadFromStorage();
+onMounted(async () => {
+  if (!demoMode) await auth.loadDataSource();
+  await auth.loadFromStorage();
 });
 </script>
 
@@ -43,7 +44,7 @@ onMounted(() => {
         <span v-if="demoMode" class="demo-badge">展示模式 · 示意資料</span>
         <div class="nav-tabs">
         <button
-          v-if="!demoMode"
+          v-if="!demoMode && auth.dataSource !== 'notion'"
           type="button"
           class="nav-tab"
           :class="{ active: currentTab === 'trends' }"

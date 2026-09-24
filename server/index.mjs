@@ -3,13 +3,46 @@ import axios from "axios";
 import dotenv from "dotenv";
 import cookieSession from "cookie-session";
 import { createHash } from "node:crypto";
-import { existsSync } from "node:fs";
+import { existsSync, realpathSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+  assertRootReadable,
+  handleNotionRequest,
+  resolveDataSource,
+  resolveRootPageId,
+} from "./notionSource.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
-dotenv.config();
+const dotenvResult = dotenv.config();
+
+function displayEnvValue(key, value) {
+  if (value == null || String(value).trim() === "") return "（未設定）";
+  if (/SECRET|TOKEN|PASSWORD|_PAT$|ENCRYPT_KEY/i.test(key)) return "（已設定）";
+  return String(value);
+}
+
+function logEnvFile(title, record) {
+  console.log(title);
+  const keys = Object.keys(record || {}).sort();
+  if (keys.length === 0) {
+    console.log("  （沒有讀到設定）");
+    return;
+  }
+  for (const key of keys) {
+    console.log(`  ${key}=${displayEnvValue(key, record[key])}`);
+  }
+}
+
+let DATA_SOURCE;
+try {
+  DATA_SOURCE = resolveDataSource(process.env.DATA_SOURCE);
+} catch (e) {
+  console.error(`[data-source] ${e.message}`);
+  process.exit(1);
+}
+const NOTION_ROOT_PAGE_ID = resolveRootPageId(process.env.NOTION_ROOT_PAGE_ID);
 
 const {
   ASANA_CLIENT_ID,
@@ -51,7 +84,22 @@ function getAccessToken(req) {
   return null;
 }
 
+function bearerToken(req) {
+  const auth = req.headers.authorization;
+  if (auth && typeof auth === "string" && auth.startsWith("Bearer ")) {
+    const t = auth.slice(7).trim();
+    if (t) return t;
+  }
+  return null;
+}
+
 function requireAuth(req, res, next) {
+  if (DATA_SOURCE === "notion") {
+    if (bearerToken(req)) return next();
+    return res.status(401).json({
+      message: "尚未登入，請輸入 Notion 整合金鑰。",
+    });
+  }
   if (getAccessToken(req)) return next();
   return res.status(401).json({
     message: "尚未登入，請使用個人權杖（PAT）登入後使用。",
@@ -171,6 +219,10 @@ function cacheUserIdFromToken(accessToken) {
   return createHash("sha256").update(accessToken, "utf8").digest("hex").slice(0, 32);
 }
 
+export function apiCacheKey(source, accessToken, path, queryString) {
+  return `${source}:${cacheUserIdFromToken(accessToken)}:${path}?${queryString}`;
+}
+
 function shouldBypassApiCache(req) {
   const cc = req.headers["cache-control"];
   if (cc && /no-cache|no-store|max-age=0/i.test(String(cc))) return true;
@@ -255,14 +307,54 @@ function apiCacheSet(cacheKey, data, ttlMs) {
   apiResponseCache.set(cacheKey, { data, expiresAt: Date.now() + ttlMs });
 }
 
-// 將前端的 GET /api/* 轉發到 Asana API
+app.get("/api/config", (_req, res) => {
+  res.json({ dataSource: DATA_SOURCE });
+});
+
+app.get("/api/notion/access", async (req, res) => {
+  if (DATA_SOURCE !== "notion") {
+    return res.status(404).json({ message: "目前資料來源不是 Notion。" });
+  }
+  const token = bearerToken(req);
+  if (!token) {
+    return res.status(401).json({
+      message: "整合金鑰無效，或專案總表尚未分享給此整合。",
+    });
+  }
+  try {
+    await assertRootReadable(token, NOTION_ROOT_PAGE_ID);
+    res.json({ ok: true });
+  } catch (e) {
+    const status = e.response?.status;
+    if (status === 401 || status === 403 || status === 404) {
+      return res.status(401).json({
+        message: "整合金鑰無效，或專案總表尚未分享給此整合。",
+      });
+    }
+    console.error("[notion] 讀取根頁面失敗：", e.response?.data || e.message);
+    res.status(status || 500).json({
+      message: "連線失敗，請稍後再試",
+    });
+  }
+});
+
+// 將前端的 GET /api/* 轉發到 Asana API；Notion 模式改由專案總表組出相同形狀
 app.get("/api/*", requireAuth, async (req, res) => {
-  const accessToken = getAccessToken(req);
+  const accessToken =
+    DATA_SOURCE === "notion" ? bearerToken(req) : getAccessToken(req);
+  if (!accessToken) {
+    return res.status(401).json({
+      message:
+        DATA_SOURCE === "notion"
+          ? "尚未登入，請輸入 Notion 整合金鑰。"
+          : "尚未登入，請使用個人權杖（PAT）登入後使用。",
+    });
+  }
   const asanaPath = req.path.replace(/^\/api/, "");
   const bypass = shouldBypassApiCache(req);
   const forwardQuery = asanaForwardQuery(req.query);
   const qStr = normalizedQueryString(forwardQuery);
-  const cacheKey = `${cacheUserIdFromToken(accessToken)}:${asanaPath}?${qStr}`;
+  const cacheKey = apiCacheKey(DATA_SOURCE, accessToken, asanaPath, qStr);
 
   if (!bypass) {
     const cached = apiCacheGet(cacheKey);
@@ -278,7 +370,13 @@ app.get("/api/*", requireAuth, async (req, res) => {
   }
 
   try {
-    const data = await asanaGet(asanaPath, accessToken, forwardQuery);
+    const data =
+      DATA_SOURCE === "notion"
+        ? await handleNotionRequest(accessToken, asanaPath, {
+            rootPageId: NOTION_ROOT_PAGE_ID,
+            bypass,
+          })
+        : await asanaGet(asanaPath, accessToken, forwardQuery);
     if (!bypass) {
       apiCacheSet(cacheKey, data, getApiCacheTtlMs(asanaPath));
     }
@@ -286,14 +384,16 @@ app.get("/api/*", requireAuth, async (req, res) => {
     // 回傳結構維持與 Asana 相同（含 data/next_page 等），前端程式無需改動
     res.json(data);
   } catch (e) {
-    const status = e.response?.status || 500;
+    const status = e.status || e.response?.status || 500;
     console.error(
-      "[asana-oauth] 轉發 Asana API 失敗：",
+      DATA_SOURCE === "notion"
+        ? "[notion] 讀取失敗："
+        : "[asana-oauth] 轉發 Asana API 失敗：",
       asanaPath,
       e.response?.data || e.message
     );
     res.status(status).json({
-      message: "Asana API 呼叫失敗",
+      message: DATA_SOURCE === "notion" ? "Notion API 呼叫失敗" : "Asana API 呼叫失敗",
       status,
       error: e.response?.data || e.message,
     });
@@ -319,10 +419,31 @@ if (existsSync(distPath)) {
 
 const PORT = process.env.PORT || 3001;
 
-app.listen(PORT, () => {
-  const modeHint = existsSync(distPath)
-    ? "（已載入 dist/，單一服務提供前端與 API）"
-    : "開發時請同時執行：npm run dev（前端）與 npm run server（後端）。";
-  console.log(`[asana-oauth] 後端已啟動，監聽埠 ${PORT}。${modeHint}`);
-});
+function isExecutedDirectly() {
+  const entry = process.argv[1];
+  if (!entry) return false;
+  try {
+    return realpathSync(fileURLToPath(import.meta.url)) === realpathSync(entry);
+  } catch {
+    return false;
+  }
+}
+
+if (isExecutedDirectly()) {
+  logEnvFile("[config] 後端從 .env 讀到：", dotenvResult.parsed);
+  console.log("[config] 後端採用：");
+  console.log(`  DATA_SOURCE=${DATA_SOURCE}`);
+  console.log(`  NOTION_ROOT_PAGE_ID=${NOTION_ROOT_PAGE_ID}`);
+  console.log(`  PORT=${PORT}`);
+  app.listen(PORT, () => {
+    const modeHint = existsSync(distPath)
+      ? "（已載入 dist/，單一服務提供前端與 API）"
+      : "開發時請同時執行：npm run dev（前端）與 npm run server（後端）。";
+    console.log(
+      `[asana-oauth] 後端已啟動，監聽埠 ${PORT}，資料來源 ${DATA_SOURCE}。${modeHint}`
+    );
+  });
+}
+
+export { app, DATA_SOURCE };
 

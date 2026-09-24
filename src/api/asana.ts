@@ -73,6 +73,27 @@ function memberNamesFromProjectPayload(p: any): string[] {
   return Array.from(new Set(names));
 }
 
+function projectFromPayload(p: any): AsanaProject {
+  const fromMembers = memberNamesFromProjectPayload(p);
+  return {
+    gid: p.gid,
+    name: p.name,
+    color: p.color ?? null,
+    archived: !!p.archived,
+    created_at: p.created_at ?? null,
+    workspace_gid: p.workspace?.gid ?? p.workspace_gid ?? null,
+    notes_permalink_url:
+      p.project_brief?.permalink_url ?? p.notes_permalink_url ?? null,
+    project_brief_gid: p.project_brief?.gid ?? p.project_brief_gid ?? null,
+    project_permalink_url: p.permalink_url ?? p.project_permalink_url ?? null,
+    memberNames: fromMembers.length
+      ? fromMembers
+      : Array.isArray(p.memberNames)
+        ? p.memberNames
+        : [],
+  };
+}
+
 const PROJECT_MEMBERS_OPT = "members,members.name";
 
 /** 依 workspace 分頁取得「全部」專案（Asana 要求分頁時必須指定 workspace） */
@@ -96,18 +117,7 @@ export async function fetchProjects(): Promise<AsanaProject[]> {
       if (offset) params["offset"] = offset;
 
       const res = await api.get("/projects", { params });
-      const page = (res.data.data ?? []).map((p: any) => ({
-        gid: p.gid,
-        name: p.name,
-        color: p.color ?? null,
-        archived: !!p.archived,
-        created_at: p.created_at ?? null,
-        workspace_gid: p.workspace?.gid ?? null,
-        notes_permalink_url: p.project_brief?.permalink_url ?? null,
-        project_brief_gid: p.project_brief?.gid ?? null,
-        project_permalink_url: p.permalink_url ?? null,
-        memberNames: memberNamesFromProjectPayload(p),
-      }));
+      const page = (res.data.data ?? []).map((p: any) => projectFromPayload(p));
       for (const p of page) {
         byGid.set(p.gid, p);
       }
@@ -142,19 +152,7 @@ export async function fetchProject(projectGid: string): Promise<AsanaProject> {
         PROJECT_MEMBERS_OPT,
     },
   });
-  const p = res.data.data;
-  return {
-    gid: p.gid,
-    name: p.name,
-    color: p.color ?? null,
-    archived: !!p.archived,
-    created_at: p.created_at ?? null,
-    workspace_gid: p.workspace?.gid ?? null,
-    notes_permalink_url: p.project_brief?.permalink_url ?? null,
-    project_brief_gid: p.project_brief?.gid ?? null,
-    project_permalink_url: p.permalink_url ?? null,
-    memberNames: memberNamesFromProjectPayload(p),
-  };
+  return projectFromPayload(res.data.data);
 }
 
 export async function fetchSectionsByProject(
@@ -359,7 +357,7 @@ export async function fetchTasksBySection(
     };
     if (offset) params["offset"] = offset;
 
-    const res = await api.get(`/sections/${sectionGid}/tasks`, { params });
+    const res = await api.get(`/sections/${encodeURIComponent(sectionGid)}/tasks`, { params });
 
     const tasks = res.data.data.map((t: any) => {
       const billingField = pickBillingCustomField(t.custom_fields);
