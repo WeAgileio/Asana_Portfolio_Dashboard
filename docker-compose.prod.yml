@@ -17,7 +17,7 @@
 #    DASHBOARD_IMAGE=你的帳號/你的倉庫:標籤（會覆寫預設）。
 #
 # 若要固定寫死特定版本，可直接改 image 行，例如：
-#   image: yuminggood/asana_dashboard:v1.13.0
+#   image: yuminggood/asana_dashboard:v1.14.0
 #
 # ── 若要在有原始碼的機器上「本地建置」映像（開發/CI），可暫時加上 build： ──
 #   build:
@@ -33,8 +33,8 @@ services:
     # 若部署主機為 ARM64，可取消下一行註解強制平台
     # platform: linux/arm64/v8
     # 可於同目錄 .env 設定 DASHBOARD_IMAGE 覆寫（方便換帳號/私有庫/其它 Registry）
-    # 預設釘在 v1.13.0：此版會讀 DATA_SOURCE，且 NOTION_TOKEN 有值時略過登入卡。
-    image: ${DASHBOARD_IMAGE:-yuminggood/asana_dashboard:v1.13.0}
+    # 預設釘在 v1.14.0。NOTION_TOKEN 有值時略過登入卡。根頁面 ID 不寫預設值。
+    image: ${DASHBOARD_IMAGE:-yuminggood/asana_dashboard:v1.14.0}
     ports:
       - "3001:3001"
     environment:
