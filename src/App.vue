@@ -78,14 +78,17 @@ onMounted(async () => {
         </button>
         </div>
       </div>
-      <button
-        v-if="!demoMode && !auth.serverHoldsNotionToken"
-        type="button"
-        class="nav-logout"
-        @click="auth.clearToken()"
-      >
-        登出
-      </button>
+      <div class="nav-right">
+        <span v-if="!demoMode && auth.dataSource === 'notion'" class="notion-mark">數據來源:Notion</span>
+        <button
+          v-if="!demoMode && !auth.serverHoldsNotionToken"
+          type="button"
+          class="nav-logout"
+          @click="auth.clearToken()"
+        >
+          登出
+        </button>
+      </div>
     </nav>
 
     <main class="app-main">
@@ -127,6 +130,19 @@ onMounted(async () => {
   align-items: center;
   gap: 10px 14px;
   min-width: 0;
+}
+.nav-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.notion-mark {
+  flex-shrink: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: #374151;
+  white-space: nowrap;
 }
 .demo-badge {
   flex-shrink: 0;

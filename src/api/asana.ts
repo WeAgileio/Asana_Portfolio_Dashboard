@@ -7,6 +7,7 @@ import {
   getDemoTasksBySection,
 } from "@/demo/demoApi";
 import { isDemoMode } from "@/demo/isDemoMode";
+import { statusUpdatedAtFromBody } from "@/utils/notionUpdateWindow";
 import type {
   AsanaProject,
   AsanaSection,
@@ -156,19 +157,25 @@ export async function fetchProject(projectGid: string): Promise<AsanaProject> {
   return projectFromPayload(res.data.data);
 }
 
+export type ProjectSectionsResult = {
+  sections: AsanaSection[];
+  statusUpdatedAt: string | null;
+};
+
 export async function fetchSectionsByProject(
   projectGid: string
-): Promise<AsanaSection[]> {
+): Promise<ProjectSectionsResult> {
   if (isDemoMode()) {
-    return getDemoSectionsByProject(projectGid);
+    return { sections: await getDemoSectionsByProject(projectGid), statusUpdatedAt: null };
   }
   const res = await api.get(`/projects/${projectGid}/sections`, {
     params: { opt_fields: "gid,name" },
   });
-  return res.data.data.map((s: AsanaSection) => ({
+  const sections = (res.data.data || []).map((s: AsanaSection) => ({
     gid: s.gid,
     name: s.name,
   }));
+  return { sections, statusUpdatedAt: statusUpdatedAtFromBody(res.data) };
 }
 
 /**
@@ -634,10 +641,11 @@ function calcSectionStats(
 export async function fetchProjectStats(
   projectGid: string
 ): Promise<ProjectStats> {
-  const [project, sections] = await Promise.all([
+  const [project, sectionResult] = await Promise.all([
     fetchProject(projectGid),
     fetchSectionsByProject(projectGid),
   ]);
+  const sections = sectionResult.sections;
 
   const sectionStatsArray = await Promise.all(
     sections.map(async (section) => {

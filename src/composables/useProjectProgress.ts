@@ -30,6 +30,8 @@ export type ProjectProgress = {
   project: AsanaProject;
   sections: SectionProgress[];
   loadingTasks?: boolean;
+  /** Notion「狀態更新」最新一列的上次編輯時間；Asana 與展示模式為 null */
+  statusUpdatedAt?: string | null;
 };
 
 export type ProjectYearBillingLine = {
@@ -408,7 +410,7 @@ async function reloadProjectProgress(
       loadingTasks: true,
     };
 
-    const sections = await fetchSectionsByProject(projectGid);
+    const { sections, statusUpdatedAt } = await fetchSectionsByProject(projectGid);
     if (projectReloadSeqByGid.get(projectGid) !== seq) return;
 
     let projectMeta = snapshot.project;
@@ -433,6 +435,7 @@ async function reloadProjectProgress(
       project: projectMeta,
       sections: mergedSections,
       loadingTasks: true,
+      statusUpdatedAt,
     };
 
     const sectionProgressListRaw = await Promise.all(
@@ -456,6 +459,7 @@ async function reloadProjectProgress(
       project: projectMeta,
       sections: sectionProgressList,
       loadingTasks: false,
+      statusUpdatedAt,
     };
 
     nextTick(() => {
@@ -516,15 +520,15 @@ async function loadProgress(options?: LoadProgressOptions) {
 
     const projectSectionList = await Promise.all(
       projectsToLoad.map(async (project) => {
-        const sections = await fetchSectionsByProject(project.gid);
-        return { project, sections };
+        const { sections, statusUpdatedAt } = await fetchSectionsByProject(project.gid);
+        return { project, sections, statusUpdatedAt };
       })
     );
 
     const existingByProjectGid = new Map(
       items.value.map((item) => [item.project.gid, item] as const)
     );
-    items.value = projectSectionList.map(({ project, sections }) => {
+    items.value = projectSectionList.map(({ project, sections, statusUpdatedAt }) => {
       const existingItem = existingByProjectGid.get(project.gid);
       const existingSectionByGid = new Map(
         (existingItem?.sections ?? []).map((sp) => [sp.section.gid, sp] as const)
@@ -538,10 +542,11 @@ async function loadProgress(options?: LoadProgressOptions) {
         project,
         sections: mergedSections,
         loadingTasks: true,
+        statusUpdatedAt,
       };
     });
 
-    const taskPromises = projectSectionList.map(({ project, sections }) =>
+    const taskPromises = projectSectionList.map(({ project, sections, statusUpdatedAt }) =>
       (async () => {
         try {
           const sectionProgressListRaw = await Promise.all(
@@ -563,6 +568,7 @@ async function loadProgress(options?: LoadProgressOptions) {
             project,
             sections: sectionProgressList,
             loadingTasks: false,
+            statusUpdatedAt,
           };
           nextTick(() => {
             if (thisLoadId !== loadIdRef.value) return;

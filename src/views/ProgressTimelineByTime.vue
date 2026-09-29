@@ -27,9 +27,16 @@ import {
   type ProjectNameSortOrder,
 } from "@/utils/projectDisplaySort";
 import { asanaProjectNotesUrl } from "@/utils/asanaUrls";
+import { progressUpdateHintLabel } from "@/utils/notionUpdateWindow";
+import { isDemoMode } from "@/demo/isDemoMode";
 import { useAuthStore } from "@/stores/auth";
 
 const auth = useAuthStore();
+
+function progressHint(item: ProjectProgress): string | null {
+  if (item.loadingTasks || isDemoMode() || auth.dataSource !== "notion") return null;
+  return progressUpdateHintLabel(item.statusUpdatedAt);
+}
 
 const {
   loading,
@@ -1136,6 +1143,13 @@ onActivated(() => {
                 <th class="sticky-col-project bytime-project-cell">
                   <div class="project-name-text">
                     <div class="project-title-row">
+                      <span
+                        v-if="progressHint(item)"
+                        class="project-update-hint"
+                        role="img"
+                        :title="progressHint(item) ?? undefined"
+                        :aria-label="progressHint(item) ?? undefined"
+                      >💡</span>
                       <a
                         class="project-name-link project-name-label"
                         :href="asanaProjectNotesUrl(item.project)"
@@ -2209,6 +2223,10 @@ onActivated(() => {
   justify-content: center;
   gap: 6px;
   max-width: 100%;
+}
+.project-update-hint {
+  flex-shrink: 0;
+  line-height: 1;
 }
 .project-name-link.project-name-label {
   display: block;

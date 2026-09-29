@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { apiCacheKey } from "./index.mjs";
@@ -10,7 +11,9 @@ import {
   projectGidFromPage,
   resolveDataSource,
   resolveRootPageId,
+  notionSectionsPayload,
   sectionsFromTasks,
+  statusUpdatedAtFromPages,
   taskFromNotionPage,
 } from "./notionSource.mjs";
 
@@ -143,6 +146,33 @@ test("完成的一般任務不是請款任務", () => {
     mapped.task.custom_fields.find((field) => field.name === "請款金額").number_value,
     null
   );
+});
+
+test("狀態更新只取最新編輯時間，列不會變成階段或任務", () => {
+  const statusPages = [
+    {
+      last_edited_time: "2026-09-27T01:00:00.000Z",
+      properties: {
+        日期: { type: "title", title: [{ plain_text: "2026/09/26" }] },
+      },
+    },
+  ];
+  assert.equal(statusUpdatedAtFromPages(statusPages), "2026-09-27T01:00:00.000Z");
+  assert.equal(statusUpdatedAtFromPages([]), null);
+  assert.equal(statusUpdatedAtFromPages([{ last_edited_time: "  " }]), null);
+  assert.deepEqual(sectionsFromTasks("p", [], ["C01-1 新案洽談"]), []);
+});
+
+test("Notion 區段回應帶 status_updated_at，Asana 形狀沒有", () => {
+  const withEdit = notionSectionsPayload(
+    [{ gid: "s", name: "C01-1 新案洽談" }],
+    "2026-09-27T01:00:00.000Z"
+  );
+  assert.equal(withEdit.status_updated_at, "2026-09-27T01:00:00.000Z");
+  assert.equal(withEdit.data[0].name, "C01-1 新案洽談");
+  assert.equal(notionSectionsPayload([{ gid: "s", name: "C01" }], null).status_updated_at, null);
+  const proxy = readFileSync(new URL("./index.mjs", import.meta.url), "utf8");
+  assert.equal(proxy.includes("status_updated_at"), false);
 });
 
 test("快取鍵含資料來源與權杖，換來源或換金鑰就不同", () => {

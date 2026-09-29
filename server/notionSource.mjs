@@ -5,13 +5,14 @@ const NOTION_VERSION = "2022-06-28";
 const NOTION_API = "https://api.notion.com/v1";
 const DEFAULT_ROOT_PAGE_ID = "";
 const TASK_DATABASE_TITLE = "任務";
+const STATUS_DATABASE_TITLE = "狀態更新";
 const BUNDLE_TTL_MS = 5 * 60_000;
 
 const notion = axios.create({ baseURL: NOTION_API });
 
 /** @type {Map<string, { expiresAt: number, pages: any[] }>} */
 const projectListCache = new Map();
-/** @type {Map<string, { expiresAt: number, tasks: any[], stageOrder: string[] }>} */
+/** @type {Map<string, { expiresAt: number, tasks: any[], stageOrder: string[], statusUpdatedAt: string | null }>} */
 const taskBundleCache = new Map();
 /** @type {Map<string, string>} */
 const userNameCache = new Map();
@@ -108,6 +109,20 @@ export function taskFromNotionPage(page) {
   };
 }
 
+/** 查詢已依 last_edited_time 降序時，第一列就是最新編輯。空結果為 null。 */
+export function statusUpdatedAtFromPages(pages) {
+  const first = Array.isArray(pages) ? pages[0] : null;
+  const time = first?.last_edited_time;
+  return typeof time === "string" && time.trim() ? time.trim() : null;
+}
+
+export function notionSectionsPayload(sections, statusUpdatedAt) {
+  return {
+    data: sections,
+    status_updated_at: statusUpdatedAt ?? null,
+  };
+}
+
 export function sectionsFromTasks(projectGid, taskRows, stageOrder) {
   const present = new Set(
     (taskRows || []).map((row) => row.stage).filter((name) => name)
@@ -194,6 +209,14 @@ async function listAllBlocks(token, blockId) {
     cursor = page.has_more ? page.next_cursor : undefined;
   } while (cursor);
   return blocks;
+}
+
+async function latestStatusUpdatedAt(token, databaseId) {
+  const page = await notionPost(token, `/databases/${databaseId}/query`, {
+    page_size: 1,
+    sorts: [{ timestamp: "last_edited_time", direction: "descending" }],
+  });
+  return statusUpdatedAtFromPages(page?.results);
 }
 
 async function queryAllPages(token, databaseId) {
@@ -306,8 +329,12 @@ async function taskBundle(token, rootPageId, projectGid, bypass) {
   if (!projectPage) return null;
   const blocks = await listAllBlocks(token, projectPage.id);
   const databaseId = childDatabaseId(blocks, TASK_DATABASE_TITLE);
+  const statusDatabaseId = childDatabaseId(blocks, STATUS_DATABASE_TITLE);
   let stageOrder = [];
   let tasks = [];
+  const statusUpdatedAt = statusDatabaseId
+    ? await latestStatusUpdatedAt(token, statusDatabaseId)
+    : null;
   if (databaseId) {
     const schema = await notionGet(token, `/databases/${databaseId}`);
     const stageProp = schema?.properties?.["階段"];
@@ -328,6 +355,7 @@ async function taskBundle(token, rootPageId, projectGid, bypass) {
   const bundle = {
     tasks,
     stageOrder,
+    statusUpdatedAt,
     expiresAt: Date.now() + BUNDLE_TTL_MS,
   };
   taskBundleCache.set(key, bundle);
@@ -368,7 +396,10 @@ export async function handleNotionRequest(token, path, { rootPageId, bypass }) {
       err.status = 404;
       throw err;
     }
-    return { data: sectionsFromTasks(projectGid, bundle.tasks, bundle.stageOrder) };
+    return notionSectionsPayload(
+      sectionsFromTasks(projectGid, bundle.tasks, bundle.stageOrder),
+      bundle.statusUpdatedAt
+    );
   }
 
   const taskMatch = path.match(/^\/sections\/(.+)\/tasks$/);
